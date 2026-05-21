@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="YSL9Fq" name="PhraseSyncMaster" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" companyName="PhraseSyncTeam"
+              companyWebsite="https://github.com/Nardianian" bundleIdentifier="com.Nardianian.PhraseSyncMaster"
+              pluginFormats="buildAAX,buildLV2,buildStandalone,buildVST,buildVST3"
+              pluginCharacteristicsValue="pluginIsSynth,pluginProducesMidiOut,pluginWantsMidiIn"
+              aaxIdentifier="com.Nardianian.PhraseSyncMaster" pluginVST3Category="Instrument,Synth,Tools"
+              pluginAAXCategory="2048,65536" pluginVSTCategory="kPlugCategSynth"
+              lv2Uri="https://github.com/Nardianian/PhraseSyncMaster" headerPath="C:/SDKs/ASIOSDK/common&#10;&quot;C:/Program Files/JACK2/include&quot;"
+              defines="JUCE_VST3_CAN_REPLACE_VST2 =0" cppLanguageStandard="20"
+              version="1.1.0">
+  <MAINGROUP id="W5xRu6" name="PhraseSyncMaster">
+    <GROUP id="{DEA859B6-0FD1-F98A-EBB4-FC304EFD8202}" name="Source">
+      <FILE id="fI4WHP" name="PluginProcessor.cpp" compile="1" resource="0"
+            file="Source/PluginProcessor.cpp"/>
+      <FILE id="yrnmDW" name="PluginProcessor.h" compile="0" resource="0"
+            file="Source/PluginProcessor.h"/>
+      <FILE id="PRprWZ" name="PluginEditor.cpp" compile="1" resource="0"
+            file="Source/PluginEditor.cpp"/>
+      <FILE id="F0JSor" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"
+               JUCE_USE_WINRT_MIDI="1" JUCE_ASIO="1" JUCE_ALSA="0" JUCE_JACK="1"/>
+  <EXPORTFORMATS>
+    <VS2026 targetFolder="Builds/VisualStudio2026">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="PhraseSyncMaster" winArchitecture="Win32,x64"
+                       useRuntimeLibDLL="0"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="PhraseSyncMaster" winArchitecture="Win32,x64"
+                       useRuntimeLibDLL="0"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../../../../Program Files/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../../../../Program Files/JUCE/modules"/>
+      </MODULEPATHS>
+    </VS2026>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
