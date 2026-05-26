@@ -9,9 +9,31 @@
               pluginAAXCategory="2048,65536" pluginVSTCategory="kPlugCategSynth"
               lv2Uri="https://github.com/Nardianian/PhraseSyncMaster" headerPath="C:/SDKs/ASIOSDK/common&#10;&quot;C:/Program Files/JACK2/include&quot;"
               defines="JUCE_VST3_CAN_REPLACE_VST2 =0" cppLanguageStandard="20"
-              version="1.1.0">
+              version="1.2.1">
   <MAINGROUP id="W5xRu6" name="PhraseSyncMaster">
     <GROUP id="{DEA859B6-0FD1-F98A-EBB4-FC304EFD8202}" name="Source">
+      <FILE id="rV5xCT" name="GrooveActionMessage.h" compile="0" resource="0"
+            file="Source/GrooveActionMessage.h"/>
+      <FILE id="a4ra8x" name="GrooveBrowser.cpp" compile="1" resource="0"
+            file="Source/GrooveBrowser.cpp"/>
+      <FILE id="t7SRh4" name="GrooveBrowser.h" compile="0" resource="0" file="Source/GrooveBrowser.h"/>
+      <FILE id="HaHBqN" name="GrooveFolder.cpp" compile="1" resource="0"
+            file="Source/GrooveFolder.cpp"/>
+      <FILE id="pmXkXM" name="GrooveFolder.h" compile="0" resource="0" file="Source/GrooveFolder.h"/>
+      <FILE id="QqFEtm" name="GrooveListBox.cpp" compile="1" resource="0"
+            file="Source/GrooveListBox.cpp"/>
+      <FILE id="lFEN06" name="GrooveListBox.h" compile="0" resource="0" file="Source/GrooveListBox.h"/>
+      <FILE id="qw3vfy" name="GroovePlayer.cpp" compile="1" resource="0"
+            file="Source/GroovePlayer.cpp"/>
+      <FILE id="a2q4a6" name="GroovePlayer.h" compile="0" resource="0" file="Source/GroovePlayer.h"/>
+      <FILE id="GsHBCi" name="GrooveStore.cpp" compile="1" resource="0" file="Source/GrooveStore.cpp"/>
+      <FILE id="H3e8l4" name="GrooveStore.h" compile="0" resource="0" file="Source/GrooveStore.h"/>
+      <FILE id="Mm98Cv" name="GrooveTransport.cpp" compile="1" resource="0"
+            file="Source/GrooveTransport.cpp"/>
+      <FILE id="YWAMvI" name="GrooveTransport.h" compile="0" resource="0"
+            file="Source/GrooveTransport.h"/>
+      <FILE id="EGJURW" name="json.hpp" compile="0" resource="0" file="Source/json.hpp"/>
+      <FILE id="zBCNYq" name="Log.h" compile="0" resource="0" file="Source/Log.h"/>
       <FILE id="fI4WHP" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="yrnmDW" name="PluginProcessor.h" compile="0" resource="0"
