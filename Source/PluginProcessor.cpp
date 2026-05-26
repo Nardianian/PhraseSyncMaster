@@ -14,15 +14,15 @@
 //==============================================================================
 PhraseSyncMasterAudioProcessor::PhraseSyncMasterAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-     : AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
-                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                     #endif
-                       ),
-       parameters (*this, nullptr, "PhraseSyncParameters", createParameterLayout())
+    : AudioProcessor(BusesProperties()
+#if ! JucePlugin_IsMidiEffect
+#if ! JucePlugin_IsSynth
+        .withInput("Input", juce::AudioChannelSet::stereo(), true)
+#endif
+        .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+#endif
+    ),
+    parameters(*this, nullptr, "PhraseSyncParameters", createParameterLayout())
 #endif
 {
     currentChordNotes.clear();
@@ -44,82 +44,97 @@ juce::AudioProcessorValueTreeState::ParameterLayout PhraseSyncMasterAudioProcess
 
     // Phrase Length Strings for Quantized Modules
     juce::StringArray phraseLengthOptions;
-    phraseLengthOptions.add ("1 Beat");
-    phraseLengthOptions.add ("2 Beats");
-    phraseLengthOptions.add ("4 Beats (1 Bar)");
-    phraseLengthOptions.add ("8 Beats (2 Bars)");
-    phraseLengthOptions.add ("16 Beats (4 Bars)");
-    phraseLengthOptions.add ("32 Beats (8 Bars)");
-    phraseLengthOptions.add ("64 Beats (16 Bars)");
+    phraseLengthOptions.add("1 Beat");
+    phraseLengthOptions.add("2 Beats");
+    phraseLengthOptions.add("4 Beats (1 Bar)");
+    phraseLengthOptions.add("8 Beats (2 Bars)");
+    phraseLengthOptions.add("16 Beats (4 Bars)");
+    phraseLengthOptions.add("32 Beats (8 Bars)");
+    phraseLengthOptions.add("64 Beats (16 Bars)");
 
     // MIDI note reference strings
     juce::StringArray midiNoteOptions;
     for (int i = 0; i <= 127; ++i) {
-        midiNoteOptions.add (juce::String (i) + " (" + juce::MidiMessage::getMidiNoteName (i, true, true, 3) + ")");
+        midiNoteOptions.add(juce::String(i) + " (" + juce::MidiMessage::getMidiNoteName(i, true, true, 3) + ")");
     }
 
     //--------------------------------------------------------------------------
     // 1. PARAMETERS: NOTE FILTER MODULE
     //--------------------------------------------------------------------------
-    params.push_back (std::make_unique<juce::AudioParameterBool> ("NF_BYPASS", "Note Filter Bypass", false));
-    params.push_back (std::make_unique<juce::AudioParameterInt> ("NF_VARIATION", "NF Variation", 1, 16, 1));
-    
-    juce::StringArray nfHeightOptions { "6 Semitones", "1 Octave", "2 Octaves", "3 Octaves" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("NF_HEIGHT", "NF Var Height", nfHeightOptions, 1));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("NF_PHRASE", "NF Phrase Length", phraseLengthOptions, 2));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("NF_BYPASS", "Note Filter Bypass", false));
+    params.push_back(std::make_unique<juce::AudioParameterInt>("NF_VARIATION", "NF Variation", 1, 16, 1));
+
+    juce::StringArray nfHeightOptions{ "6 Semitones", "1 Octave", "2 Octaves", "3 Octaves" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("NF_HEIGHT", "NF Var Height", nfHeightOptions, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("NF_PHRASE", "NF Phrase Length", phraseLengthOptions, 2));
 
     //--------------------------------------------------------------------------
     // 2. PARAMETERS: ARPEGGIATOR MODULE (Geometry + Clock)
     //--------------------------------------------------------------------------
-    params.push_back (std::make_unique<juce::AudioParameterBool> ("ARP_BYPASS", "Arpeggiator Bypass", true)); // By default deactivated
-    
-    juce::StringArray arpRateOptions { "1/4", "1/4 Triplet", "1/8", "1/8 Triplet", "1/16", "1/16 Triplet", "1/32" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_RATE", "Arp Rate (Clock)", arpRateOptions, 4)); // Default 1/16
-    
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_REF_NOTE", "Arp Reference Note", midiNoteOptions, 60)); // Middle C
-    
-    juce::StringArray arpNoChordOptions { "Silence", "Use Pattern As Notes", "Latch Last Chord" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_NO_CHORD", "Arp When No Chord", arpNoChordOptions, 2));
-    
-    juce::StringArray arpSingleNoteOptions { "Silence", "Use Pattern As Notes", "Use As Is", "Powerchord", "Transpose Last Chord" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_SINGLE_NOTE", "Arp When Single Note", arpSingleNoteOptions, 4));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("ARP_BYPASS", "Arpeggiator Bypass", true));
 
-    juce::StringArray arpMappingOptions { "Always Leave Unmapped", "Semitone To Degree", "White Key To Degree" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_MAPPING", "Arp Pattern Mapping", arpMappingOptions, 1));
+    juce::StringArray arpRateOptions{ "1/4", "1/4 Triplet", "1/8", "1/8 Triplet", "1/16", "1/16 Triplet", "1/32" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_RATE", "Arp Rate (Clock)", arpRateOptions, 4));
 
-    juce::StringArray arpWrapOptions { "No Wraparound", "After All Chord Degrees" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_WRAP", "Arp Octave Wraparound", arpWrapOptions, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_REF_NOTE", "Arp Reference Note", midiNoteOptions, 60));
 
-    juce::StringArray arpUnmappedOptions { "Silence", "Use As Is", "Transpose From 1st Degree", "Play Full Chord Up To Note" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("ARP_UNMAPPED", "Arp Unmapped Behaviour", arpUnmappedOptions, 0));
+    juce::StringArray arpNoChordOptions{ "Silence", "Use Pattern As Notes", "Latch Last Chord" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_NO_CHORD", "Arp When No Chord", arpNoChordOptions, 2));
+
+    juce::StringArray arpSingleNoteOptions{ "Silence", "Use Pattern As Notes", "Use As Is", "Powerchord", "Transpose Last Chord" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_SINGLE_NOTE", "Arp When Single Note", arpSingleNoteOptions, 4));
+
+    juce::StringArray arpMappingOptions{ "Always Leave Unmapped", "Semitone To Degree", "White Key To Degree" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_MAPPING", "Arp Pattern Mapping", arpMappingOptions, 1));
+
+    juce::StringArray arpWrapOptions{ "No Wraparound", "After All Chord Degrees" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_WRAP", "Arp Octave Wraparound", arpWrapOptions, 1));
+
+    juce::StringArray arpUnmappedOptions{ "Silence", "Use As Is", "Transpose From 1st Degree", "Play Full Chord Up To Note" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_UNMAPPED", "Arp Unmapped Behaviour", arpUnmappedOptions, 0));
 
     //--------------------------------------------------------------------------
     // 3. PARAMETERS: LINE TOGGLER MODULE
     //--------------------------------------------------------------------------
-    params.push_back (std::make_unique<juce::AudioParameterBool> ("LT_BYPASS", "Line Toggler Bypass", false));
-    params.push_back (std::make_unique<juce::AudioParameterInt> ("LT_CHANNEL", "LT Target Channel", 1, 16, 1));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("LT_PHRASE", "LT Phrase Length", phraseLengthOptions, 2));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("LT_BYPASS", "Line Toggler Bypass", false));
+    params.push_back(std::make_unique<juce::AudioParameterInt>("LT_CHANNEL", "LT Target Channel", 1, 16, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("LT_PHRASE", "LT Phrase Length", phraseLengthOptions, 2));
 
     //--------------------------------------------------------------------------
     // 4. PARAMETERS: CHANNEL FILTER MODULE
     //--------------------------------------------------------------------------
-    params.push_back (std::make_unique<juce::AudioParameterBool> ("CF_BYPASS", "Channel Filter Bypass", false));
-    params.push_back (std::make_unique<juce::AudioParameterInt> ("CF_CHANNEL", "CF Target Channel", 1, 16, 1));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("CF_PHRASE", "CF Phrase Length", phraseLengthOptions, 2));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("CF_BYPASS", "Channel Filter Bypass", false));
+    params.push_back(std::make_unique<juce::AudioParameterInt>("CF_CHANNEL", "CF Target Channel", 1, 16, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CF_PHRASE", "CF Phrase Length", phraseLengthOptions, 2));
 
     //--------------------------------------------------------------------------
     // 5. PARAMETERS: CONTROLLER MOTION MODULE
     //--------------------------------------------------------------------------
-    params.push_back (std::make_unique<juce::AudioParameterBool> ("CM_BYPASS", "Controller Motion Bypass", false));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> ("CM_PHRASE", "CM Phrase Length", phraseLengthOptions, 2));
-    params.push_back (std::make_unique<juce::AudioParameterInt> ("CM_BASE_CC", "CM First CC Number", 1, 124, 10));
-    params.push_back (std::make_unique<juce::AudioParameterInt> ("CM_CHANNEL", "CM MIDI Channel", 1, 16, 1));
-    
-    // The four continuous Targets (macro value from 0% to 100%)
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("CM_TARGET_1", "CM Target CC 1", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("CM_TARGET_2", "CM Target CC 2", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("CM_TARGET_3", "CM Target CC 3", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> ("CM_TARGET_4", "CM Target CC 4", 0.0f, 1.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("CM_BYPASS", "Controller Motion Bypass", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CM_PHRASE", "CM Phrase Length", phraseLengthOptions, 2));
+    params.push_back(std::make_unique<juce::AudioParameterInt>("CM_BASE_CC", "CM First CC Number", 1, 124, 10));
+    params.push_back(std::make_unique<juce::AudioParameterInt>("CM_CHANNEL", "CM MIDI Channel", 1, 16, 1));
+
+    // The four continuous Targets
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("CM_TARGET_1", "CM Target CC 1", 0.0f, 1.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("CM_TARGET_2", "CM Target CC 2", 0.0f, 1.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("CM_TARGET_3", "CM Target CC 3", 0.0f, 1.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("CM_TARGET_4", "CM Target CC 4", 0.0f, 1.0f, 0.0f));
+
+    // --- LIVE MIDI / GROOVE TRANSLATOR PARAMS ---
+    params.push_back(std::make_unique<juce::AudioParameterBool>("LIVEMIDI_BYPASS", "LiveMidi Bypass", false));
+
+    juce::StringArray routingOptions{ "Pre-FX", "Post-FX" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("LIVEMIDI_ROUTING", "LiveMidi Routing", routingOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("LIVEMIDI_MASTER_MUTE", "LiveMidi Master Mute", false));
+
+    // Mute channels (1-16)
+    for (int i = 1; i <= 16; ++i)
+    {
+        juce::String paramId = "LIVEMIDI_MUTE_CH_" + juce::String(i);
+        juce::String paramName = "Mute Ch " + juce::String(i);
+        params.push_back(std::make_unique<juce::AudioParameterBool>(paramId, paramName, false));
+    }
 
     return { params.begin(), params.end() };
 }
@@ -132,35 +147,40 @@ bool PhraseSyncMasterAudioProcessor::isMidiEffect() const { return false; }
 double PhraseSyncMasterAudioProcessor::getTailLengthSeconds() const { return 0.0; }
 int PhraseSyncMasterAudioProcessor::getNumPrograms() { return 1; }
 int PhraseSyncMasterAudioProcessor::getCurrentProgram() { return 0; }
-void PhraseSyncMasterAudioProcessor::setCurrentProgram (int index) { juce::ignoreUnused(index); }
-const juce::String PhraseSyncMasterAudioProcessor::getProgramName (int index) { juce::ignoreUnused(index); return {}; }
-void PhraseSyncMasterAudioProcessor::changeProgramName (int index, const juce::String& newName) { juce::ignoreUnused(index, newName); }
+void PhraseSyncMasterAudioProcessor::setCurrentProgram(int index) { juce::ignoreUnused(index); }
+const juce::String PhraseSyncMasterAudioProcessor::getProgramName(int index) { juce::ignoreUnused(index); return {}; }
+void PhraseSyncMasterAudioProcessor::changeProgramName(int index, const juce::String& newName) { juce::ignoreUnused(index, newName); }
 
 //==============================================================================
-void PhraseSyncMasterAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void PhraseSyncMasterAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    grooveTransport.prepareToPlay(sampleRate, samplesPerBlock);
+
     juce::ignoreUnused(samplesPerBlock);
     currentSampleRate = sampleRate;
-    
-    // Cleanup initializations and clock resets at each track start
+
     totalSamplesProcessed = 0;
     sampleRemainder = 0.0;
     currentArpStep = 0;
-    
+
     noteCounters.clear();
     currentChordNotes.clear();
     lastValidChordNotes.clear();
     activeArpMappings.clear();
+
+    for (int i = 0; i < 4; ++i)
+    {
+        lastSentValues[i] = -1;
+    }
 }
 
 void PhraseSyncMasterAudioProcessor::releaseResources() {}
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool PhraseSyncMasterAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool PhraseSyncMasterAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    // Suitable for both MIDI-only configurations and standard instrument tracks
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
     return true;
 }
@@ -169,20 +189,28 @@ bool PhraseSyncMasterAudioProcessor::isBusesLayoutSupported (const BusesLayout& 
 //==============================================================================
 bool PhraseSyncMasterAudioProcessor::hasEditor() const { return true; }
 
-#include "PluginEditor.h"
-
 juce::AudioProcessorEditor* PhraseSyncMasterAudioProcessor::createEditor()
 {
     return new PhraseSyncMasterAudioProcessorEditor(*this);
 }
 
 //==============================================================================
-// SAVING AND LOADING STATE (Recalling projects in the DAW)
+// SAVING AND LOADING STATE
 //==============================================================================
 void PhraseSyncMasterAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
+
+    if (xml != nullptr)
+    {
+        auto* ccXml = xml->createNewChildElement("MidiLearnCCs");
+        for (int i = 0; i < 17; ++i)
+        {
+            ccXml->setAttribute("slot_" + juce::String(i), cmTargetCCs[i].load());
+        }
+    }
+
     copyXmlToBinary(*xml, destData);
 }
 
@@ -192,107 +220,100 @@ void PhraseSyncMasterAudioProcessor::setStateInformation(const void* data, int s
     if (xmlState != nullptr) {
         if (xmlState->hasTagName(parameters.state.getType())) {
             parameters.replaceState(juce::ValueTree::fromXml(*xmlState));
+
+            if (auto* ccXml = xmlState->getChildByName("MidiLearnCCs"))
+            {
+                for (int i = 0; i < 17; ++i)
+                {
+                    int defaultCc = (i < 4) ? (10 + i) : 0;
+                    cmTargetCCs[i].store(ccXml->getIntAttribute("slot_" + juce::String(i), defaultCc));
+                }
+            }
         }
     }
 }
 
 //==============================================================================
-// CORE OF THE MULTI-ENGINE: SEQUENTIAL AND QUANTIZED MIDI PROCESSING
+// CORE OF THE MULTI-ENGINE
 //==============================================================================
 void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Audio Buffer Security Cleanup
     for (auto i = getTotalNumInputChannels(); i < getTotalNumOutputChannels(); ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
     int numSamples = buffer.getNumSamples();
 
     //--------------------------------------------------------------------------
-    // STAGE 0: MIDI INTERCEPTION AND ACTIVE MIDI LEARN
+    // STAGE 0: SYSTEM MIDI LEARN & INCOMING CC AUTOMATION MAPPING
     //--------------------------------------------------------------------------
-    for (const auto metadata : midiMessages) {
+    for (const auto metadata : midiMessages)
+    {
         auto msg = metadata.getMessage();
-        if (msg.isController()) {
+        if (msg.isController())
+        {
             int ccNum = msg.getControllerNumber();
-            // int ccChan = msg.getChannel(); // Commented to avoid warning C4189
+            int ccValue = msg.getControllerValue();
 
-            // If MIDI Learn is active from the GUI
-            if (isMidiLearnActive.load()) {
+            // A: MIDI LEARN IS ACTIVE (Immediate capture on any of the 17 slots)
+            if (isMidiLearnActive.load())
+            {
                 int slot = targetLearnParamIndex.load();
-                if (slot >= 0 && slot < 11) {
+                if (slot >= 0 && slot < 17)
+                {
+                    // Anti-overlap protection system: cleans if already used
+                    for (int i = 0; i < 17; ++i)
+                    {
+                        if (i != slot && cmTargetCCs[i].load() == ccNum) {
+                            cmTargetCCs[i].store(0);
+                        }
+                    }
+
                     cmTargetCCs[slot].store(ccNum);
-                    stopMidiLearn();
-                    break;
-                }   
+                    stopMidiLearn(); // Disables global state and makes the button gray again
+                    break;           // Exit to process the stability of the state in the next block
+                }
             }
-            //--------------------------------------------------------------------------
-            // IF MIDI LEARN IS OFF: THE ASSIGNED CONTROLS DRIVE THE PARAMETERS
-            //--------------------------------------------------------------------------
+            // B: NORMAL STATE (Parameter automation via MIDI CC)
             else
             {
-                int ccValue = msg.getControllerValue();
+                for (int slot = 0; slot <= 11; ++slot)
+                {
+                    if (cmTargetCCs[slot].load() == ccNum && ccNum != 0)
+                    {
+                        juce::RangedAudioParameter* param = nullptr;
+                        if (slot == 0)      param = parameters.getParameter("CM_TARGET_1"); 
+                        else if (slot == 1) param = parameters.getParameter("CM_TARGET_2"); 
+                        else if (slot == 2) param = parameters.getParameter("CM_TARGET_3"); 
+                        else if (slot == 3) param = parameters.getParameter("CM_TARGET_4"); 
+                        // --------------------------------------
+                        else if (slot == 4) param = parameters.getParameter("NF_VARIATION");
+                        else if (slot == 5) param = parameters.getParameter("ARP_RATE");
+                        else if (slot == 6) param = parameters.getParameter("NF_HEIGHT");
+                        else if (slot == 7) param = parameters.getParameter("ARP_NO_CHORD");
+                        else if (slot == 8) param = parameters.getParameter("ARP_SINGLE_NOTE");
+                        else if (slot == 9) param = parameters.getParameter("LT_CHANNEL");
+                        else if (slot == 10) param = parameters.getParameter("CF_CHANNEL");
+                        else if (slot == 11) param = parameters.getParameter("CM_PHRASE");
 
-                // Slot 4: Variation Slider (Map 0-127 on Value Slider)
-                if (ccNum == cmTargetCCs[4].load()) {
-                    if (auto* param = parameters.getParameter("NF_VARIATION"))
-                        param->setValueNotifyingHost(ccValue / 127.0f);
-                }
-                // Slot 5: Arp Rate Menu (Map 0-127 on menu steps)
-                else if (ccNum == cmTargetCCs[5].load()) {
-                    if (auto* param = parameters.getParameter("ARP_RATE")) {
-                        int numChoices = 7; // Number of items in the Rate menu
-                        int choice = juce::jlimit(0, numChoices - 1, static_cast<int>((ccValue / 127.0f) * numChoices));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
+                        if (param != nullptr)
+                        {
+                            auto& normalisableRange = param->getNormalisableRange();
+                            float realValue = normalisableRange.convertFrom0to1(static_cast<float>(ccValue) / 127.0f);
+                            float juceNormalizedValue = normalisableRange.convertTo0to1(realValue);
+
+                            // ANTI-FLOOD: Update host and UI ONLY if the value has actually changed
+                            if (param->getValue() != juceNormalizedValue)
+                            {
+                                param->setValueNotifyingHost(juceNormalizedValue);
+                            }
+                        }
                     }
                 }
-                // Slot 6: Height/Octaves Encoder (Module 1)
-                else if (ccNum == cmTargetCCs[6].load()) {
-                    if (auto* param = parameters.getParameter("NF_HEIGHT")) {
-                        int choice = juce::jlimit(0, 3, static_cast<int>((ccValue / 127.0f) * 4));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
-                    }
-                }
-                // Slot 7: Arp No Chord Menu
-                else if (ccNum == cmTargetCCs[7].load()) {
-                    if (auto* param = parameters.getParameter("ARP_NO_CHORD")) {
-                        int choice = juce::jlimit(0, 2, static_cast<int>((ccValue / 127.0f) * 3));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
-                    }
-                }
-                // Slot 8: Arp Single Note Menu
-                else if (ccNum == cmTargetCCs[8].load()) {
-                    if (auto* param = parameters.getParameter("ARP_SINGLE_NOTE")) {
-                        int choice = juce::jlimit(0, 4, static_cast<int>((ccValue / 127.0f) * 5));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
-                    }
-                }
-                // Slot 9: Line Toggler Channel Encoder (Channels 1-16)
-                else if (ccNum == cmTargetCCs[9].load()) {
-                    if (auto* param = parameters.getParameter("LT_CHANNEL")) {
-                        int choice = juce::jlimit(0, 15, static_cast<int>((ccValue / 127.0f) * 16));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
-                    }
-                }
-                // Slot 10: Channel Filter Isolate Encoder (Channels 1-16)
-                else if (ccNum == cmTargetCCs[10].load()) {
-                    if (auto* param = parameters.getParameter("CF_CHANNEL")) { // Correct name of M4 parameter
-                        int choice = juce::jlimit(0, 15, static_cast<int>((ccValue / 127.0f) * 16));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
-                    }
-                }
-                // Slot 11: Controller Motion - Phrase Type Menu (Map 0-127 on available options)
-                else if (ccNum == cmTargetCCs[11].load()) {
-                    if (auto* param = parameters.getParameter("CM_PHRASE")) {
-                        int numChoices = 5;
-                        int choice = juce::jlimit(0, numChoices - 1, static_cast<int>((ccValue / 127.0f) * numChoices));
-                        param->setValueNotifyingHost(param->getNormalisableRange().convertTo0to1(choice));
-                    }
-                }  
-            }  
+            }   
         }
-    } 
+    }
 
     //--------------------------------------------------------------------------
     // EXTRACTING RIGID TEMPORAL DATA FROM THE PLAYHEAD
@@ -301,9 +322,10 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     double ppqPos = 0.0;
     bool isPlaying = false;
 
+    juce::Optional<juce::AudioPlayHead::PositionInfo> posInfo;
     if (auto* ph = getPlayHead())
     {
-        auto posInfo = ph->getPosition();
+        posInfo = ph->getPosition();
 
         if (posInfo.hasValue())
         {
@@ -324,13 +346,48 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     bool cfBypass = *parameters.getRawParameterValue("CF_BYPASS") > 0.5f;
     bool cmBypass = *parameters.getRawParameterValue("CM_BYPASS") > 0.5f;
 
-    // Calculating the duration of a quarter note in samples
-    double samplesPerBeat = (currentSampleRate * 60.0) / tempoBpm;
+    // --- LIVE MIDI PARAMS ---
+    bool liveBypass = *parameters.getRawParameterValue("LIVEMIDI_BYPASS") > 0.5f;
+    bool liveRouting = *parameters.getRawParameterValue("LIVEMIDI_ROUTING") > 0.5f;
+    bool liveMasterMute = *parameters.getRawParameterValue("LIVEMIDI_MASTER_MUTE") > 0.5f;
+
+    juce::MidiBuffer liveMidiBuffer;
+
+    if (!liveBypass && !liveMasterMute) {
+        juce::MidiBuffer rawLiveMidi;
+        grooveTransport.processMidi(posInfo, numSamples, rawLiveMidi);
+
+        for (const auto metadata : rawLiveMidi) {
+            auto msg = metadata.getMessage();
+            int channel = msg.getChannel();
+
+            if (channel >= 1 && channel <= 16) {
+                juce::String paramId = "LIVEMIDI_MUTE_CH_" + juce::String(channel);
+                bool isChannelMuted = *parameters.getRawParameterValue(paramId) > 0.5f;
+
+                if (!isChannelMuted) {
+                    liveMidiBuffer.addEvent(msg, metadata.samplePosition);
+                }
+            }
+            else {
+                liveMidiBuffer.addEvent(msg, metadata.samplePosition);
+            }
+        }
+    }
+
+    // Save the value in a class member variable to make it available anywhere in the process
+    currentSamplesPerBeat = (currentSampleRate * 60.0) / tempoBpm;
 
     juce::MidiBuffer processedMidi;
 
+    // --- LIVE MIDI: ROUTING PRE-FX ---
+    // Merges the muted MIDI with the incoming MIDI
+    if (!liveBypass && !liveRouting && !liveMasterMute) {
+        midiMessages.addEvents(liveMidiBuffer, 0, -1, 0);
+    }
+
     //--------------------------------------------------------------------------
-    // INTERNAL MANAGEMENT OF AGREEMENT AND NOTE COUNTERS
+    // INTERNAL MANAGEMENT OF CHORDS AND NOTE COUNTERS
     //--------------------------------------------------------------------------
     for (const auto metadata : midiMessages) {
         auto msg = metadata.getMessage();
@@ -408,7 +465,8 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
         else if (arpRateMode == 5) durationInBeats = 0.25 / 3.0;
         else if (arpRateMode == 6) durationInBeats = 0.125;
 
-        double samplesPerStep = samplesPerBeat * durationInBeats;
+        // Retrieves already calculated time variables
+        double samplesPerStep = currentSamplesPerBeat * durationInBeats;
 
         juce::SortedSet<int> chordToUse;
         bool doProcessArp = true;
@@ -455,22 +513,38 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                 int stepIndex = static_cast<int>(juce::int64(stepFloat) % chordToUse.size());
 
                 if (std::floor((absoluteSamplePos - 1.0) / samplesPerStep) < std::floor(absoluteSamplePos / samplesPerStep)) {
-                    juce::HashMap<int, int>::Iterator it(activeArpMappings);
-                    while (it.next()) {
-                        processedMidi.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), sample);
-                    }
-                    activeArpMappings.clear();
-
                     int targetNote = chordToUse[stepIndex];
-                    processedMidi.addEvent(juce::MidiMessage::noteOn(1, targetNote, 0.8f), sample);
-                    activeArpMappings.set(targetNote, targetNote);
+
+                    // If the note is different from the currently active one, 
+                        // turn off the previous one and turn on the new one
+                    if (!activeArpMappings.contains(targetNote)) {
+                        juce::HashMap<int, int>::Iterator it(activeArpMappings);
+                        while (it.next()) {
+                            processedMidi.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), sample);
+                        }
+                        activeArpMappings.clear();
+
+                        processedMidi.addEvent(juce::MidiMessage::noteOn(1, targetNote, 0.8f), sample);
+                        activeArpMappings.set(targetNote, targetNote);
+                    }
                 }
             }
             midiMessages.clear();
             midiMessages.addEvents(processedMidi, 0, -1, 0);
             processedMidi.clear();
         }
-        else if (silenceArp) {
+        else {
+            // ANTI-HANG: If the DAW stops or the arp goes silent, it turns off any remaining open noteOns
+            juce::HashMap<int, int>::Iterator it(activeArpMappings);
+            while (it.next()) {
+                midiMessages.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), 0);
+            }
+            activeArpMappings.clear();
+        }
+    }
+    else {
+        // ANTI-HANG: If Arpeggiator module is bypassed at runtime, it clears any residues to avoid stuck notes
+        if (activeArpMappings.size() > 0) {
             juce::HashMap<int, int>::Iterator it(activeArpMappings);
             while (it.next()) {
                 midiMessages.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), 0);
@@ -515,13 +589,12 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     }
 
     //--------------------------------------------------------------------------
-    // STAGE 5: CONTROLLER MOTION MODULE (Corrected & Optimized)
+    // STAGE 5: CONTROLLER MOTION MODULE
     //--------------------------------------------------------------------------
     if (!cmBypass) {
         int cmPhraseMode = static_cast<int>(*parameters.getRawParameterValue("CM_PHRASE"));
         int cmChannel = static_cast<int>(*parameters.getRawParameterValue("CM_CHANNEL"));
 
-        // Correct alignment of APVTS indices (0, 1, 2, 3...)
         double cmPhraseBeats = 1.0;
         if (cmPhraseMode == 0) cmPhraseBeats = 1.0;
         else if (cmPhraseMode == 1) cmPhraseBeats = 2.0;
@@ -531,48 +604,49 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
         else if (cmPhraseMode == 5) cmPhraseBeats = 32.0;
         else if (cmPhraseMode == 6) cmPhraseBeats = 64.0;
 
-        double samplesPerPhrase = samplesPerBeat * cmPhraseBeats;
+        double samplesPerPhrase = currentSamplesPerBeat * cmPhraseBeats;
 
-        // Retrieves the actual CC Targets set by the user (0.0f to 1.0f)
         float targetAmt[4];
         targetAmt[0] = *parameters.getRawParameterValue("CM_TARGET_1");
         targetAmt[1] = *parameters.getRawParameterValue("CM_TARGET_2");
         targetAmt[2] = *parameters.getRawParameterValue("CM_TARGET_3");
         targetAmt[3] = *parameters.getRawParameterValue("CM_TARGET_4");
 
-        // Operational assumption: The numeric CCs to be sent are linked to CM_BASE_CC 
-        // (valid until the drop-down menus are linked directly to these variables)
-        // int baseCcNum = static_cast<int>(*parameters.getRawParameterValue("CM_BASE_CC")); // Removed for MIDI Learn
-
-        // Calculates the current position within the automation ramp
         double phraseSamplePos = std::fmod(static_cast<double>(totalSamplesProcessed), samplesPerPhrase);
         float progress = static_cast<float>(phraseSamplePos / samplesPerPhrase);
 
-        // Internal static array to keep track of the last CC value sent and avoid heavy duplication
-        static int lastSentValues[4] = { -1, -1, -1, -1 };
-
-        // Replacing the old "for" loop from STAGE 5 with this one:
         for (int i = 0; i < 4; ++i) {
-            // Mathematical calculation of CC based on progress and macro quantity (0-127)
             int ccValue = static_cast<int>(progress * targetAmt[i] * 127.0f);
             ccValue = juce::jlimit(0, 127, ccValue);
 
-            // RECOVER ACTUAL CC (Set by MIDI Learn or default)
             int actualCC = cmTargetCCs[i].load();
 
-            // CPU OPTIMIZATION: Fire\Notify event only if value has changed
             if (ccValue != lastSentValues[i]) {
                 midiMessages.addEvent(juce::MidiMessage::controllerEvent(cmChannel, actualCC, ccValue), 0);
                 lastSentValues[i] = ccValue;
             }
-        } 
+        }
     }
 
-    // Incremental advancement of the global sample processed counter
+    // --- LIVE MIDI: ROUTING POST-FX ---
+    // Adds the MIDI file to the end of the chain to bypass effects
+    if (!liveBypass && liveRouting && !liveMasterMute) {
+        midiMessages.addEvents(liveMidiBuffer, 0, -1, 0);
+    }
+
+    // Incremental advancement of the global counter
     totalSamplesProcessed += numSamples;
+}
+
+//==============================================================================
+// LIVE MIDI / GROOVE TRANSLATOR ENGINE
+//==============================================================================
+void PhraseSyncMasterAudioProcessor::initialize(const juce::File& midiFile)
+{
+    grooveTransport.initialize(midiFile);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new PhraseSyncMasterAudioProcessor();
-} 
+}
