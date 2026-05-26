@@ -12,6 +12,7 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "GroovePlayer.h"
 
 //==============================================================================
 // CUSTOM LOOK AND FEEL CLASS
@@ -38,6 +39,30 @@ public:
 };
 
 //==============================================================================
+// BIG MENU LOOK AND FEEL CLASS
+//==============================================================================
+class BigMenuLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    BigMenuLookAndFeel() {}
+
+    // Force font size inside popup window
+    juce::Font getPopupMenuFont() override
+    {
+        return juce::Font(15.0f, juce::Font::plain);
+    }
+
+    // Force the menu row to expand to accommodate the large text
+    void getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
+        int targetHeight, int& width, int& height) override
+    {
+        juce::LookAndFeel_V4::getIdealPopupMenuItemSize(text, isSeparator, targetHeight, width, height);
+        height = 32; // Increased row height to 32 pixels
+        width += 20; // Extra width margin
+    }
+};
+//==============================================================================     
+
 class PhraseSyncMasterAudioProcessorEditor : public juce::AudioProcessorEditor, 
                                              public juce::Timer
 {
@@ -52,6 +77,7 @@ public:
 
 private:
     CustomLookAndFeel customLookAndFeel;
+    BigMenuLookAndFeel bigMenuLookAndFeel;
     PhraseSyncMasterAudioProcessor& audioProcessor;
 
     //--------------------------------------------------------------------------
@@ -145,16 +171,16 @@ private:
     //--------------------------------------------------------------------------
 
     // Rotary Encoders
-    juce::Slider nfHeightEncoder;     // Module 1
     juce::Slider ltChannelEncoder;    // Module 3
     juce::Slider cfIsolateEncoder;    // Module 4
-    juce::Slider nfVariationSliderEncoder; // Module 1 Rotary Variation
 
     // Twelve LN Buttons Array
     juce::TextButton cmLearnButtons[12];
 
+    // Buttons to reset the MIDI Learn of each module
+    juce::TextButton resetModuleLearnButtons[5];
+
     // Attachments to bind Encoders to the APVTS in a bidirectional way
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> heightAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ltChanAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> cfChanAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> phraseAttachment;
@@ -163,8 +189,34 @@ private:
     juce::Label ltEncoderLabel;
     juce::Label cfEncoderLabel;
 
+    private:
+        // --- LIVE MIDI COMPONENTS ---
+        juce::GroupComponent liveMidiGroup{ "liveMidiGroup", "LIVE MIDI GROOVE TRANSLATOR" };
+        juce::ToggleButton bypassButton{ "Bypass LiveMidi" };
+        juce::ComboBox routingComboBox;
+        juce::Label routingLabel{ "RoutingLabel", "Routing:" };
+
+        // Array for the 16 mute buttons
+        juce::ToggleButton channelMuteButtons[16];
+
+        // --- LIVE MIDI TRANSPORT CONTROL COMPONENT ---
+        GroovePlayer groovePlayer{ audioProcessor };
+
+        // --- ATTACHMENTS APVTS ---
+        using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+        using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+
+        std::unique_ptr<ButtonAttachment> bypassAttachment;
+        std::unique_ptr<ComboBoxAttachment> routingAttachment;
+
+        // Array for the attachments of the 16 channels
+        std::unique_ptr<ButtonAttachment> channelMuteAttachments[16];  
+
     // Helper function to update label text with the actual assigned CC
     void updateTargetLabels();
+
+    // Helper to handle left-clicking on MIDI Learn buttons
+    void handleLearnButtonClick(int buttonIndex, const juce::ModifierKeys& modifiers);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PhraseSyncMasterAudioProcessorEditor)
 };
