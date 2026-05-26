@@ -27,8 +27,15 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     nfBypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         audioProcessor.parameters, "NF_BYPASS", nfBypassButton);
 
+    // Configure and make the Variation slider visible
     addAndMakeVisible(nfVariationSlider);
-    nfVariationSlider.setRange(1.0, 4.0, 1.0);
+
+    // Make the encoder horizontal
+    nfVariationSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    nfVariationSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 40, 20);
+
+    // Create the vital attachment!
+    // (No need for setRange, the Attachment automatically takes the 1-16 range from the Processor)
     nfVariationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.parameters, "NF_VARIATION", nfVariationSlider);
 
@@ -185,13 +192,9 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
 
         cmLearnButtons[i].onClick = [this, i]()
             {
-                if (audioProcessor.isLearning() && audioProcessor.getActiveLearnSlot() == i) {
-                    audioProcessor.stopMidiLearn();
-                }
-                else {
-                    audioProcessor.startMidiLearn(i);
-                }
-            };
+                auto modifiers = juce::ModifierKeys::getCurrentModifiers();
+                handleLearnButtonClick(i, modifiers);
+            }; 
     }
 
     // Configuring the style of graphics and text boxes under the potentiometers
@@ -203,14 +206,10 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
         knob.setValue(def);
         };
 
-    setupRotaryKnob(nfHeightEncoder, 1.0, 4.0, 3.0);
-    // Transform the Variation into a 123px Rotary
-    setupRotaryKnob(nfVariationSliderEncoder, 0.0, 127.0, 64.0);
-    setupRotaryKnob(ltChannelEncoder, 1.0, 16.0, 1.0);
+    setupRotaryKnob(ltChannelEncoder, 1.0, 16.0, 1.0); 
     setupRotaryKnob(cfIsolateEncoder, 1.0, 16.0, 1.0);
 
     // CRITICAL FIX: Connect Encoders directly to APVTS via native Attachments
-    heightAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.parameters, "NF_HEIGHT", nfHeightEncoder);
     ltChanAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.parameters, "LT_CHANNEL", ltChannelEncoder);
     cfChanAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.parameters, "CF_CHANNEL", cfIsolateEncoder);
     phraseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.parameters, "CM_PHRASE", cmPhraseMenu);
@@ -224,25 +223,89 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     addAndMakeVisible(ltEncoderLabel);
     addAndMakeVisible(cfEncoderLabel); 
 
-    // Starts the GUI timer at 10Hz (checks MIDI Learn status every 100ms)
-    startTimer(100);
+    //--------------------------------------------------------------------------
+    // CONFIGURATION: MODULE 6 - LIVE MIDI (GROOVE TRANSLATOR)
+    //--------------------------------------------------------------------------
+    // 1. ComboBox and Text Setup
+    routingComboBox.addItem("Pre-FX", 1);
+    routingComboBox.addItem("Post-FX", 2);
+    routingComboBox.setJustificationType(juce::Justification::centred);
+    routingComboBox.setLookAndFeel(&bigMenuLookAndFeel);
+
+    bypassButton.setButtonText("Bypass LiveMidi"); 
+
+    // 2. Makes the main controls visible
+    addAndMakeVisible(liveMidiGroup);
+    addAndMakeVisible(bypassButton);
+    addAndMakeVisible(routingComboBox);
+    addAndMakeVisible(routingLabel);
+    routingLabel.attachToComponent(&routingComboBox, true);
+
+    // 3.Connect the main controls to the APVTS
+    bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        audioProcessor.parameters, "LIVEMIDI_BYPASS", bypassButton);
+    routingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        audioProcessor.parameters, "LIVEMIDI_ROUTING", routingComboBox);    
+
+    // 3b. Initialize and register the internal Transport Controller
+    addAndMakeVisible(groovePlayer);
+    audioProcessor.getGrooveTransport().addActionListener(&groovePlayer);
+    groovePlayer.addActionListener(&audioProcessor.getGrooveTransport());
+
+    // 4. Initialize, make visible, and connect the 16 mute channels
+    for (int i = 0; i < 16; ++i)
+    {
+        juce::String chNumber = juce::String(i + 1);
+        channelMuteButtons[i].setButtonText("Mute Ch " + chNumber);
+
+        // Colors in style with the look & feel
+        channelMuteButtons[i].setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
+        channelMuteButtons[i].setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+
+        addAndMakeVisible(channelMuteButtons[i]);
+
+        juce::String paramId = "LIVEMIDI_MUTE_CH_" + chNumber;
+        channelMuteAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+            audioProcessor.parameters, paramId, channelMuteButtons[i]);
+    }  
 
     // Initialize the label texts
     updateTargetLabels();
 
-    setSize(1000, 500); // Ideal starting size
+    // Initialize the 5 reset buttons for the modules
+    for (int i = 0; i < 5; ++i)
+    {
+        addAndMakeVisible(resetModuleLearnButtons[i]);
+        resetModuleLearnButtons[i].setButtonText("Reset MIDI");
+        resetModuleLearnButtons[i].setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF552222));
+        resetModuleLearnButtons[i].setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    }
+
+    // LAMBDA for the reset button clicks linked to the modules
+    resetModuleLearnButtons[0].onClick = [this]() { audioProcessor.unlearnMidi(6); audioProcessor.unlearnMidi(4); }; // Module 1
+    resetModuleLearnButtons[1].onClick = [this]() { audioProcessor.unlearnMidi(5); audioProcessor.unlearnMidi(7); audioProcessor.unlearnMidi(8); }; // Module 2
+    resetModuleLearnButtons[2].onClick = [this]() { audioProcessor.unlearnMidi(9); };  // Module 3
+    resetModuleLearnButtons[3].onClick = [this]() { audioProcessor.unlearnMidi(10); }; // Module 4
+    resetModuleLearnButtons[4].onClick = [this]() { audioProcessor.unlearnMidi(11); audioProcessor.unlearnMidi(0); audioProcessor.unlearnMidi(1); audioProcessor.unlearnMidi(2); audioProcessor.unlearnMidi(3); }; // Module 5
+
+    // Vertically enlarge the window
+    setSize(1000, 445); 
+
+    // Starts the 20Hz timer (updates every 50 milliseconds) for polling MIDI Learn status
+    startTimerHz(20);
 }
 
 PhraseSyncMasterAudioProcessorEditor::~PhraseSyncMasterAudioProcessorEditor()
 {
+    routingComboBox.setLookAndFeel(nullptr);
     setLookAndFeel(nullptr);
-}
+}  
 
 //==============================================================================
-//==============================================================================
+
 void PhraseSyncMasterAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    // General plugin background (Empty space between modules and borders)
+    // General plugin background
     g.fillAll(juce::Colour(0xFF1A1A1A));
 
     auto totalWidth = getWidth();
@@ -250,234 +313,214 @@ void PhraseSyncMasterAudioProcessorEditor::paint(juce::Graphics& g)
 
     auto padding = 8;
     auto moduleWidth = (totalWidth - (padding * 6)) / 5;
-    auto moduleHeight = totalHeight - (padding * 2);
 
-    // Base color array for the 5 modules
-    juce::Colour baseColors[5] = {
-        juce::Colour(0xFF3A3F44), // Module 1: Note Filter (Steel Grey)
-        juce::Colour(0xFF1C2D42), // Module 2: Arpeggiator (Midnight Blue)
-        juce::Colour(0xFF24382A), // Module 3: Line Toggler (Dark Olive Green)
-        juce::Colour(0xFF4A321A), // Module 4: Channel Filter (Bronze Copper)
-        juce::Colour(0xFF3D1C2A)  // Module 5: Controller Motion (Amaranth Magma)
+    // LiveMidi panel height and dynamic calculation of the background of the upper modules
+    int liveMidiPanelHeight = 175;
+    auto moduleHeight = totalHeight - liveMidiPanelHeight - padding;
+
+    // Base color array for the 5 modules + LiveMidi
+    juce::Colour baseColors[6] = {
+        juce::Colour(0xFF3A3F44), // Module 1: Note Filter
+        juce::Colour(0xFF1C2D42), // Module 2: Arpeggiator
+        juce::Colour(0xFF24382A), // Module 3: Line Toggler
+        juce::Colour(0xFF4A321A), // Module 4: Channel Filter
+        juce::Colour(0xFF3D1C2A), // Module 5: Controller Motion
+        juce::Colour(0xFF2B2B2B)  // Module 6: Live Midi
     };
 
-    // Design your custom metallic background column by column
-    for (int i = 0; i < 5; ++i)
-    {
-        // X calculation identical to the resized() method for a millimetric alignment
-        int colX = padding + (moduleWidth + padding) * i;
-
-        juce::Rectangle<int> moduleArea(colX, padding, moduleWidth, moduleHeight);
-        auto fArea = moduleArea.toFloat();
-
-        // Creating the Brushed Metal Effect Using a Vertical Gradient
-        // Zenithal light: lightest part at the top, soft reflection in the center, dark at the base
+    // Lambda for drawing the panels
+    auto drawPanel = [&](juce::Graphics& gr, juce::Rectangle<int> area, juce::Colour baseCol) {
+        auto fArea = area.toFloat();
         juce::ColourGradient gradient(
-            baseColors[i].brighter(0.15f), fArea.getX(), fArea.getY(),                // Start (High)
-            baseColors[i].darker(0.2f), fArea.getX(), fArea.getBottom(),            // End (Low)
+            baseCol.brighter(0.15f), fArea.getX(), fArea.getY(),
+            baseCol.darker(0.2f), fArea.getX(), fArea.getBottom(),
             false
         );
+        gradient.addColour(0.3, baseCol.brighter(0.25f));
+        gradient.addColour(0.7, baseCol);
+        gr.setGradientFill(gradient);
+        gr.fillRoundedRectangle(fArea, 6.0f);
+        gr.setColour(baseCol.brighter(0.4f).withAlpha(0.3f));
+        gr.drawRoundedRectangle(fArea, 6.0f, 1.0f);
+        };
 
-        // Adds a central highlight to simulate the reflection of curved sheet metal
-        gradient.addColour(0.3, baseColors[i].brighter(0.25f));
-        gradient.addColour(0.7, baseColors[i]);
-
-        // Apply gradient to form area
-        g.setGradientFill(gradient);
-        g.fillRoundedRectangle(fArea, 6.0f); // Chamfered corners for panels
-
-        // BORDER DESIGN
-        g.setColour(baseColors[i].brighter(0.4f).withAlpha(0.3f));
-        g.drawRoundedRectangle(fArea, 6.0f, 1.0f);
+    // Draw the 5 vertical columns
+    for (int i = 0; i < 5; ++i)
+    {
+        int colX = padding + (moduleWidth + padding) * i;
+        juce::Rectangle<int> moduleArea(colX, padding, moduleWidth, moduleHeight);
+        drawPanel(g, moduleArea, baseColors[i]);
     }
+
+    // Draw the horizontal Live Midi panel at the bottom with new height
+    juce::Rectangle<int> liveMidiArea(padding, totalHeight - 175 + padding, totalWidth - (padding * 2), 175 - (padding * 2));
+    drawPanel(g, liveMidiArea, baseColors[5]);
+
     //--------------------------------------------------------------------------
     // Automatic Version Number Printing (Bottom right)
     //--------------------------------------------------------------------------
-    g.setFont(11.0f); // Small font, real hardware style
-    g.setColour(juce::Colours::white.withAlpha(0.4f)); // Semi-transparent white
-
+    g.setFont(11.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.4f));
     juce::String versionText = "v" + juce::String(ProjectInfo::versionString);
-
-    // Draw text in the lower right corner with a padding of 8 pixels from the edge
-    g.drawText(versionText,
-        totalWidth - 100 - padding,
-        totalHeight - 15 - padding,
-        100, 15,
-        juce::Justification::bottomRight);
-} 
+    g.drawText(versionText, totalWidth - 100 - padding - 12, totalHeight - 15 - padding - 12, 100, 15, juce::Justification::bottomRight);
+}  
+//==============================================================================
 
 void PhraseSyncMasterAudioProcessorEditor::resized()
 {
-    auto totalWidth = getWidth();
-    auto totalHeight = getHeight();
-
     auto padding = 8;
-    // Divides the horizontal space into 5 columns separated by padding
-    auto moduleWidth = (totalWidth - (padding * 6)) / 5;
-    auto moduleHeight = totalHeight - (padding * 2);
 
-    auto elementGap = juce::jlimit(4, 12, totalHeight / 40);
+    // 1. DYNAMIC HEIGHTS IN SYNCHRONIZATION WITH PAINT
+    int topModulesHeight = 253;
+    int liveMidiHeight = 175;
 
-    // Rotary Diameter Calculation
-    const int targetDiameter = 123;
-    const int knobXOffset = (moduleWidth - targetDiameter) / 2; // Automatic centering in the column
+    // Calculate the width of each of the 5 upper modules
+    int moduleWidth = (getWidth() - (padding * 6)) / 5;
 
-    //--------------------------------------------------------------------------
-    // COLUMN 1: NOTE FILTER (Structural geometric shifts)
-    //--------------------------------------------------------------------------
+    // 2. POSITIONING OF THE 5 UPPER MODULES
+    // Place the modules leaving the resets at the bottom
     {
-        const int colX = padding;
-        noteFilterGroup.setBounds(colX, padding, moduleWidth, moduleHeight);
-        auto bounds = noteFilterGroup.getBounds().reduced(10);
-        bounds.removeFromTop(20);
-
-        nfBypassButton.setBounds(bounds.removeFromTop(24));
-        bounds.removeFromTop(elementGap);
-
-        // Menu Octaves Higher + LN (Slot 6)
-        auto heightRow = bounds.removeFromTop(24);
-        cmLearnButtons[6].setBounds(heightRow.removeFromRight(30));
-        heightRow.removeFromRight(4);
-        nfHeightMenu.setBounds(heightRow);
-
-        bounds.removeFromTop(elementGap);
-        nfHeightLabel.setBounds(bounds.removeFromTop(16));
-
-        // Positioning the axis of the first "Octaves" Rotary
-        bounds.removeFromTop(40);
-        nfHeightEncoder.setBounds(colX + knobXOffset, bounds.getY(), targetDiameter, targetDiameter + 18);
-
-        // Make room for the Variation section
-        bounds.removeFromTop(targetDiameter + 35);
-        nfVariationLabel.setBounds(bounds.removeFromTop(16));
-
-        // Positioning the "Variation" Rotary and its LN button
-        int currentY = bounds.getY();
-        nfVariationSliderEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 18);
-        cmLearnButtons[4].setBounds(colX + moduleWidth - 40, currentY + 40, 30, 22);
+        // Column 1: Note Filter
+        noteFilterGroup.setBounds(padding, padding, moduleWidth, topModulesHeight);
+        auto b = noteFilterGroup.getBounds().reduced(10); b.removeFromTop(20);
+        nfBypassButton.setBounds(b.removeFromTop(24));
+        b.removeFromTop(4);
+        auto hRow = b.removeFromTop(24);
+        cmLearnButtons[6].setBounds(hRow.removeFromRight(30)); hRow.removeFromRight(4);
+        nfHeightMenu.setBounds(hRow);
+        b.removeFromTop(4);
+        nfVariationLabel.setBounds(b.removeFromTop(16));
+        auto vRow = b.removeFromTop(24);
+        cmLearnButtons[4].setBounds(vRow.removeFromRight(30)); vRow.removeFromRight(4);
+        nfVariationSlider.setBounds(vRow);
+        resetModuleLearnButtons[0].setBounds(padding + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    //--------------------------------------------------------------------------
-    // COLUMN 2: ARPEGGIATOR (the three menus with LN button alignment)
-    //--------------------------------------------------------------------------
     {
-        const int colX = padding + moduleWidth + padding;
-        arpeggiatorGroup.setBounds(colX, padding, moduleWidth, moduleHeight);
-        auto bounds = arpeggiatorGroup.getBounds().reduced(10);
-        bounds.removeFromTop(20);
-
-        arpBypassButton.setBounds(bounds.removeFromTop(24));
-        bounds.removeFromTop(elementGap);
-
-        arpRateLabel.setBounds(bounds.removeFromTop(16));
-        auto rateRow = bounds.removeFromTop(24);
-        cmLearnButtons[5].setBounds(rateRow.removeFromRight(30));
-        rateRow.removeFromRight(4);
-        arpRateMenu.setBounds(rateRow);
-
-        bounds.removeFromTop(elementGap);
-        arpNoChordLabel.setBounds(bounds.removeFromTop(16));
-        auto noChordRow = bounds.removeFromTop(24);
-        cmLearnButtons[7].setBounds(noChordRow.removeFromRight(30));
-        noChordRow.removeFromRight(4);
-        arpNoChordMenu.setBounds(noChordRow);
-
-        bounds.removeFromTop(elementGap);
-        arpSingleNoteLabel.setBounds(bounds.removeFromTop(16));
-        auto singleNoteRow = bounds.removeFromTop(24);
-        cmLearnButtons[8].setBounds(singleNoteRow.removeFromRight(30));
-        singleNoteRow.removeFromRight(4);
-        arpSingleNoteMenu.setBounds(singleNoteRow);
+        // Column 2: Arpeggiator
+        int colX = padding + moduleWidth + padding;
+        arpeggiatorGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        auto b = arpeggiatorGroup.getBounds().reduced(10); b.removeFromTop(20);
+        arpBypassButton.setBounds(b.removeFromTop(24));
+        b.removeFromTop(2);
+        arpRateLabel.setBounds(b.removeFromTop(14));
+        auto rRow = b.removeFromTop(22);
+        cmLearnButtons[5].setBounds(rRow.removeFromRight(30)); rRow.removeFromRight(4);
+        arpRateMenu.setBounds(rRow);
+        arpNoChordLabel.setBounds(b.removeFromTop(14));
+        auto ncRow = b.removeFromTop(22);
+        cmLearnButtons[7].setBounds(ncRow.removeFromRight(30)); ncRow.removeFromRight(4);
+        arpNoChordMenu.setBounds(ncRow);
+        arpSingleNoteLabel.setBounds(b.removeFromTop(14));
+        auto snRow = b.removeFromTop(22);
+        cmLearnButtons[8].setBounds(snRow.removeFromRight(30)); snRow.removeFromRight(4);
+        arpSingleNoteMenu.setBounds(snRow);
+        resetModuleLearnButtons[1].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    //--------------------------------------------------------------------------
-    // COLUMN 3: LINE TOGGLER (Rotary repositioned)
-    //--------------------------------------------------------------------------
+    const int targetDiameter = 95; // Diameter optimized to not cover the numerical values
+    const int knobXOffset = (moduleWidth - targetDiameter) / 2;
+
     {
-        const int colX = padding + (moduleWidth + padding) * 2;
-        lineTogglerGroup.setBounds(colX, padding, moduleWidth, moduleHeight);
-        auto bounds = lineTogglerGroup.getBounds().reduced(10);
-        bounds.removeFromTop(20);
-
-        ltBypassButton.setBounds(bounds.removeFromTop(24));
-        bounds.removeFromTop(elementGap);
-
-        ltChannelLabel.setBounds(bounds.removeFromTop(16));
-        ltChannelMenu.setBounds(bounds.removeFromTop(24));
-
-        // Moving the label and allocating space for the encoder 
-        bounds.removeFromTop(25);
-        ltEncoderLabel.setBounds(bounds.removeFromTop(16));
-        bounds.removeFromTop(5);
-
-        int currentY = bounds.getY();
-        ltChannelEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 18);
-        cmLearnButtons[9].setBounds(colX + moduleWidth - 40, currentY + 40, 30, 22);
+        // Column 3: Line Toggler
+        int colX = padding + (moduleWidth + padding) * 2;
+        lineTogglerGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        auto b = lineTogglerGroup.getBounds().reduced(10); b.removeFromTop(20);
+        ltBypassButton.setBounds(b.removeFromTop(24));
+        b.removeFromTop(4);
+        ltChannelLabel.setBounds(b.removeFromTop(14));
+        ltChannelMenu.setBounds(b.removeFromTop(22));
+        b.removeFromTop(4);
+        ltEncoderLabel.setBounds(b.removeFromTop(14));
+        int currentY = b.getY() + 2;
+        ltChannelEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 14);
+        cmLearnButtons[9].setBounds(colX + moduleWidth - 36, currentY + 20, 30, 20);
+        resetModuleLearnButtons[2].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    //--------------------------------------------------------------------------
-    // COLUMN 4: CHANNEL FILTER (Rotary and components)
-    //--------------------------------------------------------------------------
     {
-        const int colX = padding + (moduleWidth + padding) * 3;
-        channelFilterGroup.setBounds(colX, padding, moduleWidth, moduleHeight);
-        auto bounds = channelFilterGroup.getBounds().reduced(10);
-        bounds.removeFromTop(20);
-
-        cfBypassButton.setBounds(bounds.removeFromTop(24));
-        bounds.removeFromTop(elementGap);
-
-        cfChannelLabel.setBounds(bounds.removeFromTop(18));
-        cfChannelMenu.setBounds(bounds.removeFromTop(24));
-
-        // Make room for the encoder
-        bounds.removeFromTop(25);
-        cfEncoderLabel.setBounds(bounds.removeFromTop(16));
-        bounds.removeFromTop(5);
-
-        int currentY = bounds.getY();
-        cfIsolateEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 18);
-        cmLearnButtons[10].setBounds(colX + moduleWidth - 40, currentY + 40, 30, 22);
+        // Column 4: Channel Filter
+        int colX = padding + (moduleWidth + padding) * 3;
+        channelFilterGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        auto b = channelFilterGroup.getBounds().reduced(10); b.removeFromTop(20);
+        cfBypassButton.setBounds(b.removeFromTop(24));
+        b.removeFromTop(4);
+        cfChannelLabel.setBounds(b.removeFromTop(14));
+        cfChannelMenu.setBounds(b.removeFromTop(22));
+        b.removeFromTop(4);
+        cfEncoderLabel.setBounds(b.removeFromTop(14));
+        int currentY = b.getY() + 2;
+        cfIsolateEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 14);
+        cmLearnButtons[10].setBounds(colX + moduleWidth - 36, currentY + 20, 30, 20);
+        resetModuleLearnButtons[3].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    //--------------------------------------------------------------------------
-    // COLUMN 5: CONTROLLER MOTION (Phrase Menu with LN button insertion)
-    //--------------------------------------------------------------------------
     {
-        const int colX = padding + (moduleWidth + padding) * 4;
-        controllerMotionGroup.setBounds(colX, padding, moduleWidth, moduleHeight);
-        auto bounds = controllerMotionGroup.getBounds().reduced(10);
-        bounds.removeFromTop(20);
+        // Column 5: Controller Motion
+        int colX = padding + (moduleWidth + padding) * 4;
+        controllerMotionGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        auto b = controllerMotionGroup.getBounds().reduced(10); b.removeFromTop(20);
+        cmBypassButton.setBounds(b.removeFromTop(24));
+        b.removeFromTop(2);
+        cmPhraseLabel.setBounds(b.removeFromTop(12));
+        auto pRow = b.removeFromTop(20);
+        cmLearnButtons[11].setBounds(pRow.removeFromRight(30)); pRow.removeFromRight(4);
+        cmPhraseMenu.setBounds(pRow);
 
-        cmBypassButton.setBounds(bounds.removeFromTop(24));
-        bounds.removeFromTop(elementGap);
-
-        cmPhraseLabel.setBounds(bounds.removeFromTop(16));
-
-        // Phrase Menu with LN button (Slot 11)
-        auto phraseRow = bounds.removeFromTop(24);
-        cmLearnButtons[11].setBounds(phraseRow.removeFromRight(30));
-        phraseRow.removeFromRight(4);
-        cmPhraseMenu.setBounds(phraseRow);
-
-        bounds.removeFromTop(elementGap);
-
-        // Align and create space for the four Targets
         juce::Label* labels[] = { &cmTarget1Label, &cmTarget2Label, &cmTarget3Label, &cmTarget4Label };
         juce::ComboBox* menus[] = { &cmTarget1Menu, &cmTarget2Menu, &cmTarget3Menu, &cmTarget4Menu };
-
         for (int i = 0; i < 4; ++i)
         {
-            labels[i]->setBounds(bounds.removeFromTop(14));
-            auto row = bounds.removeFromTop(24);
-            cmLearnButtons[i].setBounds(row.removeFromRight(30));
-            row.removeFromRight(4);
+            labels[i]->setBounds(b.removeFromTop(12));
+            auto row = b.removeFromTop(20);
+            cmLearnButtons[i].setBounds(row.removeFromRight(30)); row.removeFromRight(4);
             menus[i]->setBounds(row);
-            bounds.removeFromTop(elementGap / 2);
         }
+        resetModuleLearnButtons[4].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
-}
 
+    // 3. MODULE 6 POSITIONING: LIVE MIDI (RE-DESIGNED FOR VERTICAL EXPANSION)
+    int liveMidiY = getHeight() - liveMidiHeight + padding;
+    liveMidiGroup.setBounds(padding, liveMidiY, getWidth() - (padding * 2), liveMidiHeight - (padding * 2));
+
+    auto liveBounds = liveMidiGroup.getBounds().reduced(12);
+    liveBounds.removeFromTop(12);
+
+    // Save bounds for the transport row at the absolute bottom of the module
+    auto transportRowArea = liveBounds.removeFromBottom(36);
+
+    // Routing Controls Area (Kept exactly as original)
+    auto controlsArea = liveBounds.removeFromLeft(200);
+    bypassButton.setBounds(controlsArea.removeFromTop(24));
+    controlsArea.removeFromTop(14);
+
+    // TrimmedLeft 
+    routingComboBox.setBounds(controlsArea.removeFromTop(28).withTrimmedLeft(65));
+
+    liveBounds.removeFromLeft(15);
+
+    // Mute Button Grid (8 columns x 2 rows)
+    int numCols = 8;
+    int numRows = 2;
+    int btnWidth = liveBounds.getWidth() / numCols;
+    int btnHeight = liveBounds.getHeight() / numRows;
+
+    for (int i = 0; i < 16; ++i)
+    {
+        int row = i / numCols;
+        int col = i % numCols;
+        int x = liveBounds.getX() + col * btnWidth;
+        int y = liveBounds.getY() + row * btnHeight;
+        channelMuteButtons[i].setBounds(juce::Rectangle<int>(x, y, btnWidth, btnHeight).reduced(2));
+    }
+
+    // Center the GroovePlayer buttons row horizontally inside the lower dedicated transport area
+    int grooveX = (getWidth() - 500) / 2; // Lenght of position button strip width
+    int grooveWidth = 500 - 65;           // Position button key area width
+    int grooveHeight = 32 + 10;           // Height of the start\end button strip
+
+    groovePlayer.setBounds(grooveX, transportRowArea.getY(), grooveWidth, grooveHeight);
+}
 //==============================================================================
 // TIMER: UPDATE GRAPHICS BASED ON AUDIO ENGINE STATUS
 //==============================================================================
@@ -490,13 +533,20 @@ void PhraseSyncMasterAudioProcessorEditor::timerCallback()
     {
         if (isProcessorLearning && activeSlot == i)
         {
-            cmLearnButtons[i].setButtonText("???");
-            cmLearnButtons[i].setColour(juce::TextButton::buttonColourId, juce::Colours::darkred);
+            if (cmLearnButtons[i].getButtonText() != "???")
+            {
+                cmLearnButtons[i].setButtonText("???");
+                cmLearnButtons[i].setColour(juce::TextButton::buttonColourId, juce::Colours::darkred);
+            }
         }
         else
         {
-            cmLearnButtons[i].setButtonText("LN");
-            cmLearnButtons[i].setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
+            if (cmLearnButtons[i].getButtonText() != "LN")
+            {
+                cmLearnButtons[i].setButtonText("LN");
+                cmLearnButtons[i].setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF333333));
+                cmLearnButtons[i].setToggleState(false, juce::dontSendNotification);
+            }
         }
     }
 
@@ -526,3 +576,33 @@ void PhraseSyncMasterAudioProcessorEditor::updateTargetLabels()
     cmTarget3Label.setText("Target 3 (CC " + juce::String(audioProcessor.getMappedCCForTarget(2)) + ")", juce::dontSendNotification);
     cmTarget4Label.setText("Target 4 (CC " + juce::String(audioProcessor.getMappedCCForTarget(3)) + ")", juce::dontSendNotification);
 } 
+
+//==============================================================================
+void PhraseSyncMasterAudioProcessorEditor::handleLearnButtonClick(int buttonIndex, const juce::ModifierKeys& modifiers)
+{
+    if (modifiers.isPopupMenu())
+        return;
+
+    const bool processorIsLearning = audioProcessor.isLearning();
+    const int currentActiveSlot = audioProcessor.getActiveLearnSlot();
+
+    if (processorIsLearning)
+    {
+        // If the clicked slot is the same, turn off the learn
+        if (currentActiveSlot == buttonIndex)
+        {
+            audioProcessor.stopMidiLearn();
+        }
+        // If the user clicks another LN button while one is already active,
+        // turn off the old one and immediately activate the new one without getting stuck
+        else
+        {
+            audioProcessor.stopMidiLearn();
+            audioProcessor.startMidiLearn(buttonIndex);
+        }
+    }
+    else
+    {
+        audioProcessor.startMidiLearn(buttonIndex);
+    }
+}
