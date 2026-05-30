@@ -101,6 +101,8 @@ private:
     juce::Label          arpRateLabel{ "lbl_arp_rt",  "Arp Rate" };
     juce::Label          arpNoChordLabel{ "lbl_arp_nc",  "When No Chord" };
     juce::Label          arpSingleNoteLabel{ "lbl_arp_sn",  "When Single Note" };
+    juce::ComboBox       arpChannelMenu;
+    juce::Label          arpChannelLabel{ "lbl_arp_ch", "Output Channel" };
 
     //--------------------------------------------------------------------------
     // GRAPHIC COMPONENTS: MODULE 3 - LINE TOGGLER
@@ -136,6 +138,9 @@ private:
     juce::Label          cmTarget3Label{ "lbl_cm_t3", "Target 3 (CC)" };
     juce::Label          cmTarget4Label{ "lbl_cm_t4", "Target 4 (CC)" };
 
+    juce::ComboBox       cmLengthMenu;
+    juce::Label          cmLengthLabel{ "lbl_cm_ln", "Phrase Length" };
+
     //--------------------------------------------------------------------------
     // ATTACHMENTS FOR CONNECTION TO THE APVTS
     //--------------------------------------------------------------------------
@@ -149,6 +154,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpRateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpNoChordAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpSingleNoteAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpChannelAttachment;
 
     // Module 3
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   ltBypassAttachment;
@@ -165,6 +171,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmTarget2Attachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmTarget3Attachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmTarget4Attachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmLengthAttachment;
 
     //--------------------------------------------------------------------------
     // MODULE 5 MIDI LEARN 
