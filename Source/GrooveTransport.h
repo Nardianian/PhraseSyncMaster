@@ -86,3 +86,4 @@ protected:
     void markNoteOff(int channel, int note);
     void sendNotesOff(int channel, MidiBuffer&);
 };
+
