@@ -178,7 +178,9 @@ void GrooveTransport::parseMetaEvent(const MidiMessage& message) {
 
 void GrooveTransport::parseEvent(const MidiMessage& message) {
     if (!message.isNoteOnOrOff())
+    {
         MYDBG("      event: " + message.getDescription().toStdString() + ", ts: " + String::formatted("%0.4f", message.getTimeStamp()).toStdString());
+    }
 }
 
 void GrooveTransport::markNoteOn(int channel, int note) {
