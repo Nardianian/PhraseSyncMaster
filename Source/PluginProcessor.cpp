@@ -25,10 +25,15 @@ PhraseSyncMasterAudioProcessor::PhraseSyncMasterAudioProcessor()
     parameters(*this, nullptr, "PhraseSyncParameters", createParameterLayout())
 #endif
 {
-    currentChordNotes.clear();
-    lastValidChordNotes.clear();
-    noteCounters.clear();
-    activeArpMappings.clear();
+    //Initializing static arrays
+    for (int i = 0; i < 128; ++i) {
+        isChordNoteActive[i] = false;
+        isLastValidNoteActive[i] = false;
+        noteCounters[i] = 0;
+        activeArpMappings[i] = 0;
+    }
+    currentChordSize = 0;
+    lastValidChordSize = 0;
 }
 
 PhraseSyncMasterAudioProcessor::~PhraseSyncMasterAudioProcessor()
@@ -72,7 +77,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PhraseSyncMasterAudioProcess
     // 2. PARAMETERS: ARPEGGIATOR MODULE (Geometry + Clock)
     //--------------------------------------------------------------------------
     params.push_back(std::make_unique<juce::AudioParameterBool>("ARP_BYPASS", "Arpeggiator Bypass", true));
-
+    params.push_back(std::make_unique<juce::AudioParameterInt>("ARP_CHANNEL", "Arp MIDI Channel", 1, 16, 1));
     juce::StringArray arpRateOptions{ "1/4", "1/4 Triplet", "1/8", "1/8 Triplet", "1/16", "1/16 Triplet", "1/32" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_RATE", "Arp Rate (Clock)", arpRateOptions, 4));
 
@@ -112,6 +117,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout PhraseSyncMasterAudioProcess
     //--------------------------------------------------------------------------
     params.push_back(std::make_unique<juce::AudioParameterBool>("CM_BYPASS", "Controller Motion Bypass", false));
     params.push_back(std::make_unique<juce::AudioParameterChoice>("CM_PHRASE", "CM Phrase Length", phraseLengthOptions, 2));
+    juce::StringArray cmShapeOptions{ "Ramp Up", "Ramp Down", "Triangle", "Sine Wave", "Random Sync" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CM_SHAPE", "CM Motion Shape", cmShapeOptions, 0));
     params.push_back(std::make_unique<juce::AudioParameterInt>("CM_BASE_CC", "CM First CC Number", 1, 124, 10));
     params.push_back(std::make_unique<juce::AudioParameterInt>("CM_CHANNEL", "CM MIDI Channel", 1, 16, 1));
 
@@ -163,10 +170,14 @@ void PhraseSyncMasterAudioProcessor::prepareToPlay(double sampleRate, int sample
     sampleRemainder = 0.0;
     currentArpStep = 0;
 
-    noteCounters.clear();
-    currentChordNotes.clear();
-    lastValidChordNotes.clear();
-    activeArpMappings.clear();
+    for (int i = 0; i < 128; ++i) {
+        isChordNoteActive[i] = false;
+        isLastValidNoteActive[i] = false;
+        noteCounters[i] = 0;
+        activeArpMappings[i] = 0;
+    }
+    currentChordSize = 0;
+    lastValidChordSize = 0;
 
     for (int i = 0; i < 4; ++i)
     {
@@ -342,6 +353,7 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     // Reading the bypass states of the modules
     bool nfBypass = *parameters.getRawParameterValue("NF_BYPASS") > 0.5f;
     bool arpBypass = *parameters.getRawParameterValue("ARP_BYPASS") > 0.5f;
+    int arpChannel = static_cast<int>(*parameters.getRawParameterValue("ARP_CHANNEL"));
     bool ltBypass = *parameters.getRawParameterValue("LT_BYPASS") > 0.5f;
     bool cfBypass = *parameters.getRawParameterValue("CF_BYPASS") > 0.5f;
     bool cmBypass = *parameters.getRawParameterValue("CM_BYPASS") > 0.5f;
@@ -393,25 +405,32 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
         auto msg = metadata.getMessage();
         int noteNum = msg.getNoteNumber();
 
-        if (msg.isNoteOn()) {
-            int currentCount = noteCounters[noteNum];
-            noteCounters.set(noteNum, currentCount + 1);
-            currentChordNotes.add(noteNum);
-        }
-        else if (msg.isNoteOff()) {
-            int currentCount = noteCounters[noteNum] - 1;
-            if (currentCount <= 0) {
-                noteCounters.remove(noteNum);
-                currentChordNotes.remove(noteNum);
+        if (noteNum >= 0 && noteNum < 128) {
+            if (msg.isNoteOn()) {
+                if (noteCounters[noteNum] == 0) {
+                    isChordNoteActive[noteNum] = true;
+                    currentChordSize++;
+                }
+                noteCounters[noteNum]++;
             }
-            else {
-                noteCounters.set(noteNum, currentCount);
+            else if (msg.isNoteOff()) {
+                noteCounters[noteNum]--;
+                if (noteCounters[noteNum] <= 0) {
+                    noteCounters[noteNum] = 0;
+                    if (isChordNoteActive[noteNum]) {
+                        isChordNoteActive[noteNum] = false;
+                        currentChordSize--;
+                    }
+                }
             }
         }
     }
 
-    if (currentChordNotes.size() > 0) {
-        lastValidChordNotes = currentChordNotes;
+    if (currentChordSize > 0) {
+        for (int i = 0; i < 128; ++i) {
+            isLastValidNoteActive[i] = isChordNoteActive[i];
+        }
+        lastValidChordSize = currentChordSize;
     }
 
     //--------------------------------------------------------------------------
@@ -468,24 +487,43 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
         // Retrieves already calculated time variables
         double samplesPerStep = currentSamplesPerBeat * durationInBeats;
 
-        juce::SortedSet<int> chordToUse;
+        int chordToUse[128] = { 0 };
+        int chordToUseSize = 0;
         bool doProcessArp = true;
         bool silenceArp = false;
 
-        if (currentChordNotes.size() >= 2) {
-            chordToUse = currentChordNotes;
+        if (currentChordSize >= 2) {
+            for (int i = 0; i < 128; ++i) {
+                if (isChordNoteActive[i]) chordToUse[chordToUseSize++] = i;
+            }
         }
-        else if (currentChordNotes.size() == 1) {
-            if (singleNoteBeh == 4 && lastValidChordNotes.size() > 0) {
-                int offset = currentChordNotes[0] - lastValidChordNotes[0];
-                for (int n : lastValidChordNotes) chordToUse.add(n + offset);
+        else if (currentChordSize == 1) {
+            int singleNote = -1;
+            for (int i = 0; i < 128; ++i) {
+                if (isChordNoteActive[i]) { singleNote = i; break; }
+            }
+
+            if (singleNoteBeh == 4 && lastValidChordSize > 0) {
+                int firstLastValid = -1;
+                for (int i = 0; i < 128; ++i) {
+                    if (isLastValidNoteActive[i]) { firstLastValid = i; break; }
+                }
+                int offset = singleNote - firstLastValid;
+                for (int i = 0; i < 128; ++i) {
+                    if (isLastValidNoteActive[i]) {
+                        int transposed = i + offset;
+                        if (transposed >= 0 && transposed < 128) {
+                            chordToUse[chordToUseSize++] = transposed;
+                        }
+                    }
+                }
             }
             else if (singleNoteBeh == 3) {
-                chordToUse.add(currentChordNotes[0]);
-                chordToUse.add(currentChordNotes[0] + 7);
+                chordToUse[chordToUseSize++] = singleNote;
+                if (singleNote + 7 < 128) chordToUse[chordToUseSize++] = singleNote + 7;
             }
             else if (singleNoteBeh == 2) {
-                chordToUse.add(currentChordNotes[0]);
+                chordToUse[chordToUseSize++] = singleNote;
             }
             else if (singleNoteBeh == 1) {
                 doProcessArp = false;
@@ -494,38 +532,32 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                 silenceArp = true;
             }
         }
-        else {
-            if (noChordBeh == 2 && lastValidChordNotes.size() > 0) {
-                chordToUse = lastValidChordNotes;
+        if (isDawPlaying && !silenceArp && doProcessArp && chordToUseSize > 0) {
+            // 1. SAVING UNKNOWN OR NO-NOTE EVENTS
+            // Copiamo tutti i messaggi che non sono note (CC, Pitch Bend, ecc.) per non perderli nel successivo clear()
+            for (const auto metadata : midiMessages) {
+                auto msg = metadata.getMessage();
+                if (!msg.isNoteOn() && !msg.isNoteOff()) {
+                    processedMidi.addEvent(msg, metadata.samplePosition);
+                }
             }
-            else if (noChordBeh == 1) {
-                doProcessArp = false;
-            }
-            else {
-                silenceArp = true;
-            }
-        }
-
-        if (isDawPlaying && !silenceArp && doProcessArp && chordToUse.size() > 0) {
             for (int sample = 0; sample < numSamples; ++sample) {
                 double absoluteSamplePos = static_cast<double>(totalSamplesProcessed) + sample;
                 double stepFloat = absoluteSamplePos / samplesPerStep;
-                int stepIndex = static_cast<int>(juce::int64(stepFloat) % chordToUse.size());
+                int stepIndex = static_cast<int>(juce::int64(stepFloat) % chordToUseSize);
 
                 if (std::floor((absoluteSamplePos - 1.0) / samplesPerStep) < std::floor(absoluteSamplePos / samplesPerStep)) {
                     int targetNote = chordToUse[stepIndex];
 
-                    // If the note is different from the currently active one, 
-                        // turn off the previous one and turn on the new one
-                    if (!activeArpMappings.contains(targetNote)) {
-                        juce::HashMap<int, int>::Iterator it(activeArpMappings);
-                        while (it.next()) {
-                            processedMidi.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), sample);
+                    if (activeArpMappings[targetNote] == 0) { // 0 = inactive
+                        for (int i = 0; i < 128; ++i) {
+                            if (activeArpMappings[i] > 0) { // Use the stored channel to turn off the note
+                                processedMidi.addEvent(juce::MidiMessage::noteOff(activeArpMappings[i], i, 0.0f), sample);
+                                activeArpMappings[i] = 0;
+                            }
                         }
-                        activeArpMappings.clear();
-
-                        processedMidi.addEvent(juce::MidiMessage::noteOn(1, targetNote, 0.8f), sample);
-                        activeArpMappings.set(targetNote, targetNote);
+                        processedMidi.addEvent(juce::MidiMessage::noteOn(arpChannel, targetNote, 0.8f), sample);
+                        activeArpMappings[targetNote] = arpChannel; // Remember which channel it's on
                     }
                 }
             }
@@ -534,23 +566,28 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
             processedMidi.clear();
         }
         else {
-            // ANTI-HANG: If the DAW stops or the arp goes silent, it turns off any remaining open noteOns
-            juce::HashMap<int, int>::Iterator it(activeArpMappings);
-            while (it.next()) {
-                midiMessages.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), 0);
+            // ANTI-HANG: If your DAW stops or the arp goes silent, mute the notes using the correct channel
+            for (int i = 0; i < 128; ++i) {
+                if (activeArpMappings[i] > 0) {
+                    midiMessages.addEvent(juce::MidiMessage::noteOff(activeArpMappings[i], i, 0.0f), 0);
+                    activeArpMappings[i] = 0;
+                }
             }
-            activeArpMappings.clear();
         }
     }
     else {
-        // ANTI-HANG: If Arpeggiator module is bypassed at runtime, it clears any residues to avoid stuck notes
-        if (activeArpMappings.size() > 0) {
-            juce::HashMap<int, int>::Iterator it(activeArpMappings);
-            while (it.next()) {
-                midiMessages.addEvent(juce::MidiMessage::noteOff(1, it.getKey(), 0.0f), 0);
+        // ANTI-HANG: If the module is bypassed at runtime
+        for (int i = 0; i < 128; ++i) {
+            if (activeArpMappings[i] > 0) {
+                midiMessages.addEvent(juce::MidiMessage::noteOff(activeArpMappings[i], i, 0.0f), 0);
+                activeArpMappings[i] = 0;
             }
-            activeArpMappings.clear();
         }
+    }
+
+    // --- LIVE MIDI: ROUTING POST-FX (Injection after the Arpeggiator) ---
+    if (!liveBypass && liveRouting && !liveMasterMute) {
+        midiMessages.addEvents(liveMidiBuffer, 0, -1, 0);
     }
 
     //--------------------------------------------------------------------------
@@ -612,26 +649,46 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
         targetAmt[2] = *parameters.getRawParameterValue("CM_TARGET_3");
         targetAmt[3] = *parameters.getRawParameterValue("CM_TARGET_4");
 
-        double phraseSamplePos = std::fmod(static_cast<double>(totalSamplesProcessed), samplesPerPhrase);
-        float progress = static_cast<float>(phraseSamplePos / samplesPerPhrase);
+        int cmShape = static_cast<int>(*parameters.getRawParameterValue("CM_SHAPE"));
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            double absoluteSamplePos = static_cast<double>(totalSamplesProcessed) + sample;
+            double phraseSamplePos = std::fmod(absoluteSamplePos, samplesPerPhrase);
+            float progress = static_cast<float>(phraseSamplePos / samplesPerPhrase);
 
-        for (int i = 0; i < 4; ++i) {
-            int ccValue = static_cast<int>(progress * targetAmt[i] * 127.0f);
-            ccValue = juce::jlimit(0, 127, ccValue);
+            float shapeValue = progress; // Default: Ramp Up (0)
 
-            int actualCC = cmTargetCCs[i].load();
+            if (cmShape == 1)      // Ramp Down
+            {
+                shapeValue = 1.0f - progress;
+            }
+            else if (cmShape == 2) // Triangle
+            {
+                shapeValue = (progress < 0.5f) ? (progress * 2.0f) : (2.0f - (progress * 2.0f));
+            }
+            else if (cmShape == 3) // Sine Wave
+            {
+                shapeValue = 0.5f - 0.5f * std::cos(progress * juce::MathConstants<float>::twoPi);
+            }
+            else if (cmShape == 4) // Random Sync
+            {
+                int phraseIndex = static_cast<int>(absoluteSamplePos / samplesPerPhrase);
+                unsigned int seed = static_cast<unsigned int>(phraseIndex) * 1103515245 + 12345;
+                shapeValue = static_cast<float>(seed % 10001) / 10000.0f;
+            }
 
-            if (ccValue != lastSentValues[i]) {
-                midiMessages.addEvent(juce::MidiMessage::controllerEvent(cmChannel, actualCC, ccValue), 0);
-                lastSentValues[i] = ccValue;
+            for (int i = 0; i < 4; ++i) {
+                int ccValue = static_cast<int>(shapeValue * targetAmt[i] * 127.0f);
+                ccValue = juce::jlimit(0, 127, ccValue);
+
+                int actualCC = cmTargetCCs[i].load();
+
+                if (ccValue != lastSentValues[i]) {
+                    midiMessages.addEvent(juce::MidiMessage::controllerEvent(cmChannel, actualCC, ccValue), sample);
+                    lastSentValues[i] = ccValue;
+                }
             }
         }
-    }
-
-    // --- LIVE MIDI: ROUTING POST-FX ---
-    // Adds the MIDI file to the end of the chain to bypass effects
-    if (!liveBypass && liveRouting && !liveMasterMute) {
-        midiMessages.addEvents(liveMidiBuffer, 0, -1, 0);
     }
 
     // Incremental advancement of the global counter
