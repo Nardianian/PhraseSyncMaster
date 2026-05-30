@@ -142,6 +142,22 @@ private:
     juce::Label          cmLengthLabel{ "lbl_cm_ln", "Phrase Length" };
 
     //--------------------------------------------------------------------------
+    // GRAPHIC COMPONENTS: INPUT ROUTING 
+    //--------------------------------------------------------------------------
+    juce::ComboBox nfInputBox;
+    juce::ComboBox arpInputBox;
+    juce::ComboBox ltInputBox;
+    juce::ComboBox cfInputBox;
+    juce::ComboBox cmInputBox;
+
+    // "Input" labels for the midi input channels of the first 5 modules
+    juce::Label nfInLabel;
+    juce::Label arpInLabel;
+    juce::Label ltInLabel;
+    juce::Label cfInLabel;
+    juce::Label cmInLabel;
+
+    //--------------------------------------------------------------------------
     // ATTACHMENTS FOR CONNECTION TO THE APVTS
     //--------------------------------------------------------------------------
     // Module 1
@@ -173,6 +189,13 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmTarget4Attachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmLengthAttachment;
 
+    // Input Routing Attachments 
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> nfInputAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpInputAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ltInputAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cfInputAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmInputAttachment;
+
     //--------------------------------------------------------------------------
     // MODULE 5 MIDI LEARN 
     //--------------------------------------------------------------------------
@@ -200,6 +223,8 @@ private:
         // --- LIVE MIDI COMPONENTS ---
         juce::GroupComponent liveMidiGroup{ "liveMidiGroup", "LIVE MIDI GROOVE TRANSLATOR" };
         juce::ToggleButton bypassButton{ "Bypass LiveMidi" };
+        juce::TextButton loadMidiButton{ "Load MIDI File..." };
+        std::unique_ptr<juce::FileChooser> midiFileChooser;
         juce::ComboBox routingComboBox;
         juce::Label routingLabel{ "RoutingLabel", "Routing:" };
 
