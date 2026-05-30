@@ -195,6 +195,26 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     cmLengthLabel.setJustificationType(juce::Justification::centred);
 
     //--------------------------------------------------------------------------
+    // CONFIGURATION: INPUT ROUTING 
+    //--------------------------------------------------------------------------
+    auto setupInputRouting = [this](juce::ComboBox& menu, const juce::String& paramId, std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attach)
+        {
+            addAndMakeVisible(menu);
+            menu.addItem("None", 1);
+            menu.addItem("Any", 2);
+            for (int i = 1; i <= 16; ++i)
+                menu.addItem("Ch " + juce::String(i), i + 2);
+
+            attach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.parameters, paramId, menu);
+        };
+
+    setupInputRouting(nfInputBox, "NF_INPUT", nfInputAttachment);
+    setupInputRouting(arpInputBox, "ARP_INPUT", arpInputAttachment);
+    setupInputRouting(ltInputBox, "LT_INPUT", ltInputAttachment);
+    setupInputRouting(cfInputBox, "CF_INPUT", cfInputAttachment);
+    setupInputRouting(cmInputBox, "CM_INPUT", cmInputAttachment);
+
+    //--------------------------------------------------------------------------
     // ENABLE PROPORTIONAL RESIZE
     //--------------------------------------------------------------------------
     setResizable(true, true);
@@ -257,6 +277,30 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     // 2. Makes the main controls visible
     addAndMakeVisible(liveMidiGroup);
     addAndMakeVisible(bypassButton);
+
+    addAndMakeVisible(loadMidiButton);
+    loadMidiButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFF3A5A80)); // Set a color to distinguish it from the Bypass button
+
+    loadMidiButton.onClick = [this]()
+        {
+            // Thread-safe asynchronous handling of the GUI
+            midiFileChooser = std::make_unique<juce::FileChooser>(
+                "Select a MIDI Groove",
+                juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+                "*.mid;*.midi");
+
+            auto folderOptions = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
+
+            midiFileChooser->launchAsync(folderOptions, [this](const juce::FileChooser& fc)
+                {
+                    auto file = fc.getResult();
+                    if (file.existsAsFile())
+                    {
+                        audioProcessor.initialize(file);
+                    }
+                });
+        };
+
     addAndMakeVisible(routingComboBox);
     addAndMakeVisible(routingLabel);
     routingLabel.attachToComponent(&routingComboBox, true);
@@ -307,6 +351,16 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     resetModuleLearnButtons[2].onClick = [this]() { audioProcessor.unlearnMidi(9); };  // Module 3
     resetModuleLearnButtons[3].onClick = [this]() { audioProcessor.unlearnMidi(10); }; // Module 4
     resetModuleLearnButtons[4].onClick = [this]() { audioProcessor.unlearnMidi(11); audioProcessor.unlearnMidi(0); audioProcessor.unlearnMidi(1); audioProcessor.unlearnMidi(2); audioProcessor.unlearnMidi(3); }; // Module 5
+
+    // Style configuration for input labels
+    for (auto* label : { &nfInLabel, &arpInLabel, &ltInLabel, &cfInLabel, &cmInLabel })
+    {
+        label->setText("input", juce::dontSendNotification);
+        label->setFont(juce::Font(juce::FontOptions().withHeight(15.0f).withStyle("Bold")));
+        label->setJustificationType(juce::Justification::centred);
+        label->setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.8f));
+        addAndMakeVisible(label);
+    }
 
     // Vertically enlarge the window
     setSize(1000, 530); 
@@ -390,18 +444,22 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
 {
     auto padding = 8;
 
-    // 1. HEIGHTS CALCULATION: Upper modules elongated by exactly 80px (253 -> 333)
+    // 1. HEIGHTS CALCULATION: Upper modules elongated 
     int topModulesHeight = 333;
     int liveMidiHeight = 175;
 
     int moduleWidth = (getWidth() - (padding * 6)) / 5;
 
-    // 2. POSITIONING OF THE 5 UPPER MODULES (GROW DOWNWARD)
+    // 2. POSITIONING OF THE 5 UPPER MODULES
     {
         // Column 1: Note Filter
         noteFilterGroup.setBounds(padding, padding, moduleWidth, topModulesHeight);
+        nfInLabel.setBounds(padding + moduleWidth - 10 - 100 + (100 - 58) / 2 + 25, padding + 9, 58, 18);
         auto b = noteFilterGroup.getBounds().reduced(10); b.removeFromTop(20);
-        nfBypassButton.setBounds(b.removeFromTop(24));
+        auto bypassRow = b.removeFromTop(24);
+        nfInputBox.setBounds(bypassRow.removeFromRight(100)); // Input menu on the right
+        bypassRow.removeFromRight(4); 
+        nfBypassButton.setBounds(bypassRow); // Bypass on the left
         b.removeFromTop(4);
         auto hRow = b.removeFromTop(24);
         cmLearnButtons[6].setBounds(hRow.removeFromRight(30)); hRow.removeFromRight(4);
@@ -420,8 +478,12 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         // Column 2: Arpeggiator
         int colX = padding + moduleWidth + padding;
         arpeggiatorGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        arpInLabel.setBounds(colX + moduleWidth - 10 - 100 + (100 - 58) / 2 + 25, padding + 9, 58, 18);
         auto b = arpeggiatorGroup.getBounds().reduced(10); b.removeFromTop(20);
-        arpBypassButton.setBounds(b.removeFromTop(24));
+        auto bypassRow = b.removeFromTop(24);
+        arpInputBox.setBounds(bypassRow.removeFromRight(100));
+        bypassRow.removeFromRight(4);
+        arpBypassButton.setBounds(bypassRow);
         b.removeFromTop(2);
         arpRateLabel.setBounds(b.removeFromTop(14));
         auto rRow = b.removeFromTop(22);
@@ -448,8 +510,12 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         // Column 3: Line Toggler
         int colX = padding + (moduleWidth + padding) * 2;
         lineTogglerGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        ltInLabel.setBounds(colX + moduleWidth - 10 - 100 + (100 - 58) / 2 + 25, padding + 9, 58, 18);
         auto b = lineTogglerGroup.getBounds().reduced(10); b.removeFromTop(20);
-        ltBypassButton.setBounds(b.removeFromTop(24));
+        auto bypassRow = b.removeFromTop(24);
+        ltInputBox.setBounds(bypassRow.removeFromRight(100));
+        bypassRow.removeFromRight(4);
+        ltBypassButton.setBounds(bypassRow);
         b.removeFromTop(4);
         ltChannelLabel.setBounds(b.removeFromTop(14));
         ltChannelMenu.setBounds(b.removeFromTop(22));
@@ -466,8 +532,12 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         // Column 4: Channel Filter
         int colX = padding + (moduleWidth + padding) * 3;
         channelFilterGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        cfInLabel.setBounds(colX + moduleWidth - 10 - 100 + (100 - 58) / 2 + 25, padding + 9, 58, 18);
         auto b = channelFilterGroup.getBounds().reduced(10); b.removeFromTop(20);
-        cfBypassButton.setBounds(b.removeFromTop(24));
+        auto bypassRow = b.removeFromTop(24);
+        cfInputBox.setBounds(bypassRow.removeFromRight(100));
+        bypassRow.removeFromRight(4);
+        cfBypassButton.setBounds(bypassRow);
         b.removeFromTop(4);
         cfChannelLabel.setBounds(b.removeFromTop(14));
         cfChannelMenu.setBounds(b.removeFromTop(22));
@@ -481,11 +551,15 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
     }
 
     {
-        // Column 5: Controller Motion
+        // Column 5: Controller Motion 
         int colX = padding + (moduleWidth + padding) * 4;
         controllerMotionGroup.setBounds(colX, padding, moduleWidth, topModulesHeight);
+        cmInLabel.setBounds(colX + moduleWidth - 10 - 100 + (100 - 58) / 2 + 25, padding + 9, 58, 18);
         auto b = controllerMotionGroup.getBounds().reduced(10); b.removeFromTop(20);
-        cmBypassButton.setBounds(b.removeFromTop(24));
+        auto bypassRow = b.removeFromTop(24);
+        cmInputBox.setBounds(bypassRow.removeFromRight(100));
+        bypassRow.removeFromRight(4);
+        cmBypassButton.setBounds(bypassRow);
         b.removeFromTop(2);
         cmPhraseLabel.setBounds(b.removeFromTop(12));
         auto pRow = b.removeFromTop(20);
@@ -502,7 +576,7 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
             menus[i]->setBounds(row);
         }
 
-        // Space allocation check
+        // Space allocation check (avoid the overlap between gui objects)
         b.removeFromTop(12);
         cmLengthLabel.setBounds(b.removeFromTop(14));
         auto lRow = b.removeFromTop(20);
@@ -511,19 +585,27 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         resetModuleLearnButtons[4].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    // 3. MODULE 6 POSITIONING
+    // 3. MODULE 6 POSITIONING: LIVE MIDI 
     int liveMidiY = getHeight() - liveMidiHeight + padding;
     liveMidiGroup.setBounds(padding, liveMidiY, getWidth() - (padding * 2), liveMidiHeight - (padding * 2));
 
     auto liveBounds = liveMidiGroup.getBounds().reduced(12);
     liveBounds.removeFromTop(12);
 
+    // 1. Extract the controls column from the total height 
+    auto controlsArea = liveBounds.removeFromLeft(200);
+
+    // 2. Cut the transport area from the center/right space (for Mute Buttons)
     auto transportRowArea = liveBounds.removeFromBottom(36);
 
-    auto controlsArea = liveBounds.removeFromLeft(200);
+    // 3. Place controls on the left with optimized margins  
     bypassButton.setBounds(controlsArea.removeFromTop(24));
-    controlsArea.removeFromTop(14);
+    controlsArea.removeFromTop(10);
     routingComboBox.setBounds(controlsArea.removeFromTop(28).withTrimmedLeft(65));
+    controlsArea.removeFromTop(10);
+
+    // Positioning height of the "load Midi file ..." button 
+    loadMidiButton.setBounds(controlsArea.removeFromTop(32).reduced(10, 0));
 
     liveBounds.removeFromLeft(15);
 
