@@ -175,9 +175,9 @@ private:
     std::atomic<bool> isMidiLearnActive{ false };
     std::atomic<int> targetLearnParamIndex{ -1 }; // Identify which slot (0-3) is learning
 
-    // Store the associated CCs: 0-3 (Targets M5), 4 (Variation M1), 5 (Rate M2),
-        // 6 (Height Knob M1), 7 (NoChord M2), 8 (SingleNote M2), 9 (Chan Knob M3), 10 (IsoChan Knob M4)
-        // 11 (Phrase Type Menu M5), 12 (LiveMidi Play), 13 (+Meas), 14 (-Meas), 15 (Bypass), 16 (Pre/Post Switch)
+    // Store the associated CCs: 0-3 (Targets M5), 4 (Variation M1), 5 (Rate M2), 6 (Height Knob M1), 
+      // 7 (NoChord M2), 8 (SingleNote M2), 9 (Chan Knob M3), 10 (IsoChan Knob M4), 11 (Phrase Type Menu M5),
+      // 12 (LiveMidi Play), 13 (+Meas), 14 (-Meas), 15 (Bypass), 16 (Pre/Post Switch)
     std::atomic<int> cmTargetCCs[17]{ 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 };
 
     //--------------------------------------------------------------------------
