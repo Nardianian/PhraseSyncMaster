@@ -94,6 +94,14 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     arpNoChordLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(arpSingleNoteLabel);
     arpSingleNoteLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(arpChannelMenu);
+    for (int i = 1; i <= 16; ++i)
+        arpChannelMenu.addItem("MIDI Channel " + juce::String(i), i);
+    arpChannelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        audioProcessor.parameters, "ARP_CHANNEL", arpChannelMenu);
+
+    addAndMakeVisible(arpChannelLabel);
+    arpChannelLabel.setJustificationType(juce::Justification::centred);
 
     //--------------------------------------------------------------------------
     // CONFIGURATION: MODULE 3 - LINE TOGGLER
@@ -148,7 +156,7 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     cmPhraseMenu.addItem("Sine Wave", 4);
     cmPhraseMenu.addItem("Random", 5);
     cmPhraseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        audioProcessor.parameters, "CM_PHRASE", cmPhraseMenu);
+        audioProcessor.parameters, "CM_SHAPE", cmPhraseMenu);
 
     addAndMakeVisible(cmPhraseLabel);
     cmPhraseLabel.setJustificationType(juce::Justification::centred);
@@ -172,6 +180,19 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     setupTarget(cmTarget2Menu, cmTarget2Label, "CM_TARGET_2", cmTarget2Attachment);
     setupTarget(cmTarget3Menu, cmTarget3Label, "CM_TARGET_3", cmTarget3Attachment);
     setupTarget(cmTarget4Menu, cmTarget4Label, "CM_TARGET_4", cmTarget4Attachment);
+
+    // Phrase Length Menu (Time Duration)
+    addAndMakeVisible(cmLengthMenu);
+    cmLengthMenu.addItem("1 Beat", 1);
+    cmLengthMenu.addItem("2 Beats", 2);
+    cmLengthMenu.addItem("4 Beats", 3);
+    cmLengthMenu.addItem("8 Beats", 4);
+    cmLengthMenu.addItem("16 Beats", 5);
+    cmLengthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        audioProcessor.parameters, "CM_PHRASE", cmLengthMenu);
+
+    addAndMakeVisible(cmLengthLabel);
+    cmLengthLabel.setJustificationType(juce::Justification::centred);
 
     //--------------------------------------------------------------------------
     // ENABLE PROPORTIONAL RESIZE
@@ -212,7 +233,6 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     // CRITICAL FIX: Connect Encoders directly to APVTS via native Attachments
     ltChanAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.parameters, "LT_CHANNEL", ltChannelEncoder);
     cfChanAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.parameters, "CF_CHANNEL", cfIsolateEncoder);
-    phraseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.parameters, "CM_PHRASE", cmPhraseMenu);
 
     // Font sizing of modules 3 and 4 equal to that of the other modules
     ltEncoderLabel.setFont(13.0f);
@@ -289,7 +309,7 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     resetModuleLearnButtons[4].onClick = [this]() { audioProcessor.unlearnMidi(11); audioProcessor.unlearnMidi(0); audioProcessor.unlearnMidi(1); audioProcessor.unlearnMidi(2); audioProcessor.unlearnMidi(3); }; // Module 5
 
     // Vertically enlarge the window
-    setSize(1000, 445); 
+    setSize(1000, 530); 
 
     // Starts the 20Hz timer (updates every 50 milliseconds) for polling MIDI Learn status
     startTimerHz(20);
@@ -352,8 +372,8 @@ void PhraseSyncMasterAudioProcessorEditor::paint(juce::Graphics& g)
         drawPanel(g, moduleArea, baseColors[i]);
     }
 
-    // Draw the horizontal Live Midi panel at the bottom with new height
-    juce::Rectangle<int> liveMidiArea(padding, totalHeight - 175 + padding, totalWidth - (padding * 2), 175 - (padding * 2));
+    // Draw the horizontal Live Midi panel anchored at the new absolute bottom
+    juce::Rectangle<int> liveMidiArea(padding, totalHeight - liveMidiPanelHeight + padding, totalWidth - (padding * 2), liveMidiPanelHeight - (padding * 2));
     drawPanel(g, liveMidiArea, baseColors[5]);
 
     //--------------------------------------------------------------------------
@@ -370,15 +390,13 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
 {
     auto padding = 8;
 
-    // 1. DYNAMIC HEIGHTS IN SYNCHRONIZATION WITH PAINT
-    int topModulesHeight = 253;
+    // 1. HEIGHTS CALCULATION: Upper modules elongated by exactly 80px (253 -> 333)
+    int topModulesHeight = 333;
     int liveMidiHeight = 175;
 
-    // Calculate the width of each of the 5 upper modules
     int moduleWidth = (getWidth() - (padding * 6)) / 5;
 
-    // 2. POSITIONING OF THE 5 UPPER MODULES
-    // Place the modules leaving the resets at the bottom
+    // 2. POSITIONING OF THE 5 UPPER MODULES (GROW DOWNWARD)
     {
         // Column 1: Note Filter
         noteFilterGroup.setBounds(padding, padding, moduleWidth, topModulesHeight);
@@ -393,6 +411,8 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         auto vRow = b.removeFromTop(24);
         cmLearnButtons[4].setBounds(vRow.removeFromRight(30)); vRow.removeFromRight(4);
         nfVariationSlider.setBounds(vRow);
+
+        // Reset Button layout dynamic anchor on the new bottom
         resetModuleLearnButtons[0].setBounds(padding + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
@@ -415,10 +435,13 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         auto snRow = b.removeFromTop(22);
         cmLearnButtons[8].setBounds(snRow.removeFromRight(30)); snRow.removeFromRight(4);
         arpSingleNoteMenu.setBounds(snRow);
+        arpChannelLabel.setBounds(b.removeFromTop(14));
+        arpChannelMenu.setBounds(b.removeFromTop(22));
+
         resetModuleLearnButtons[1].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    const int targetDiameter = 95; // Diameter optimized to not cover the numerical values
+    const int targetDiameter = 95;
     const int knobXOffset = (moduleWidth - targetDiameter) / 2;
 
     {
@@ -435,6 +458,7 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         int currentY = b.getY() + 2;
         ltChannelEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 14);
         cmLearnButtons[9].setBounds(colX + moduleWidth - 36, currentY + 20, 30, 20);
+
         resetModuleLearnButtons[2].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
@@ -452,6 +476,7 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         int currentY = b.getY() + 2;
         cfIsolateEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 14);
         cmLearnButtons[10].setBounds(colX + moduleWidth - 36, currentY + 20, 30, 20);
+
         resetModuleLearnButtons[3].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
@@ -476,30 +501,32 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
             cmLearnButtons[i].setBounds(row.removeFromRight(30)); row.removeFromRight(4);
             menus[i]->setBounds(row);
         }
+
+        // Space allocation check
+        b.removeFromTop(12);
+        cmLengthLabel.setBounds(b.removeFromTop(14));
+        auto lRow = b.removeFromTop(20);
+        cmLengthMenu.setBounds(lRow);
+
         resetModuleLearnButtons[4].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
-    // 3. MODULE 6 POSITIONING: LIVE MIDI (RE-DESIGNED FOR VERTICAL EXPANSION)
+    // 3. MODULE 6 POSITIONING
     int liveMidiY = getHeight() - liveMidiHeight + padding;
     liveMidiGroup.setBounds(padding, liveMidiY, getWidth() - (padding * 2), liveMidiHeight - (padding * 2));
 
     auto liveBounds = liveMidiGroup.getBounds().reduced(12);
     liveBounds.removeFromTop(12);
 
-    // Save bounds for the transport row at the absolute bottom of the module
     auto transportRowArea = liveBounds.removeFromBottom(36);
 
-    // Routing Controls Area (Kept exactly as original)
     auto controlsArea = liveBounds.removeFromLeft(200);
     bypassButton.setBounds(controlsArea.removeFromTop(24));
     controlsArea.removeFromTop(14);
-
-    // TrimmedLeft 
     routingComboBox.setBounds(controlsArea.removeFromTop(28).withTrimmedLeft(65));
 
     liveBounds.removeFromLeft(15);
 
-    // Mute Button Grid (8 columns x 2 rows)
     int numCols = 8;
     int numRows = 2;
     int btnWidth = liveBounds.getWidth() / numCols;
@@ -514,10 +541,9 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         channelMuteButtons[i].setBounds(juce::Rectangle<int>(x, y, btnWidth, btnHeight).reduced(2));
     }
 
-    // Center the GroovePlayer buttons row horizontally inside the lower dedicated transport area
-    int grooveX = (getWidth() - 500) / 2; // Lenght of position button strip width
-    int grooveWidth = 500 - 65;           // Position button key area width
-    int grooveHeight = 32 + 10;           // Height of the start\end button strip
+    int grooveX = (getWidth() - 500) / 2;
+    int grooveWidth = 500 - 65;
+    int grooveHeight = 32 + 10;
 
     groovePlayer.setBounds(grooveX, transportRowArea.getY(), grooveWidth, grooveHeight);
 }
@@ -606,3 +632,4 @@ void PhraseSyncMasterAudioProcessorEditor::handleLearnButtonClick(int buttonInde
         audioProcessor.startMidiLearn(buttonIndex);
     }
 }
+
