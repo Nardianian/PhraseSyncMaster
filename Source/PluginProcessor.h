@@ -146,13 +146,17 @@ private:
     //==============================================================================
     double currentSampleRate = 44100.0;
     
-    // Data structure to store the active agreement
-    juce::SortedSet<int> currentChordNotes;
-    juce::SortedSet<int> lastValidChordNotes;
-    juce::HashMap<int, int> noteCounters; 
-    
-    // Data structure to store the active arpeggiator mappings
-    juce::HashMap<int, int> activeArpMappings; 
+    // Data structure to store the active agreement (Fixed arrays to avoid allocation)
+    bool isChordNoteActive[128] = { false };
+    int currentChordSize = 0;
+
+    bool isLastValidNoteActive[128] = { false };
+    int lastValidChordSize = 0;
+
+    int noteCounters[128] = { 0 };
+
+    // Data structure to store the active arpeggiator mappings (Stores the MIDI channel, 0 = inactive)
+    int activeArpMappings[128] = { 0 };
 
     // Global time variables derived from the DAW Playhead
     double tempoBpm = 120.0;
