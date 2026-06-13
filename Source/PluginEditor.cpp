@@ -94,14 +94,6 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     arpNoChordLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(arpSingleNoteLabel);
     arpSingleNoteLabel.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(arpChannelMenu);
-    for (int i = 1; i <= 16; ++i)
-        arpChannelMenu.addItem("MIDI Channel " + juce::String(i), i);
-    arpChannelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        audioProcessor.parameters, "ARP_CHANNEL", arpChannelMenu);
-
-    addAndMakeVisible(arpChannelLabel);
-    arpChannelLabel.setJustificationType(juce::Justification::centred);
 
     //--------------------------------------------------------------------------
     // CONFIGURATION: MODULE 3 - LINE TOGGLER
@@ -213,6 +205,47 @@ PhraseSyncMasterAudioProcessorEditor::PhraseSyncMasterAudioProcessorEditor(Phras
     setupInputRouting(ltInputBox, "LT_INPUT", ltInputAttachment);
     setupInputRouting(cfInputBox, "CF_INPUT", cfInputAttachment);
     setupInputRouting(cmInputBox, "CM_INPUT", cmInputAttachment);
+
+    auto setupOutRouting = [this](juce::ComboBox& menu, juce::Label& label, const juce::String& paramId, std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attach)
+        {
+            addAndMakeVisible(menu);
+            menu.addItem("Main Out", 1);
+            for (int i = 1; i <= 16; ++i)
+                menu.addItem("Ch " + juce::String(i), i + 1);
+
+            attach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.parameters, paramId, menu);
+
+            addAndMakeVisible(label);
+            label.setText("OUTPUT", juce::dontSendNotification);
+            label.setFont(12.0f);
+            label.setJustificationType(juce::Justification::centredRight);
+        };
+
+    auto setupMixRouting = [this](juce::ComboBox& menu, juce::Label& label, const juce::String& paramId, std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>& attach)
+        {
+            addAndMakeVisible(menu);
+            menu.addItem("Replace", 1);
+            menu.addItem("Merge", 2);
+
+            attach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.parameters, paramId, menu);
+
+            addAndMakeVisible(label);
+            label.setText("MIX MODE", juce::dontSendNotification);
+            label.setFont(12.0f);
+            label.setJustificationType(juce::Justification::centredRight);
+        };
+
+    setupOutRouting(nfOutBox, nfOutLabel, "NF_OUTPUT", nfOutAttachment);
+    setupOutRouting(arpOutBox, arpOutLabel, "ARP_OUTPUT", arpOutAttachment);
+    setupOutRouting(ltOutBox, ltOutLabel, "LT_OUTPUT", ltOutAttachment);
+    setupOutRouting(cfOutBox, cfOutLabel, "CF_OUTPUT", cfOutAttachment);
+    setupOutRouting(cmOutBox, cmOutLabel, "CM_OUTPUT", cmOutAttachment);
+
+    setupMixRouting(nfMixBox, nfMixLabel, "NF_MIX", nfMixAttachment);
+    setupMixRouting(arpMixBox, arpMixLabel, "ARP_MIX", arpMixAttachment);
+    setupMixRouting(ltMixBox, ltMixLabel, "LT_MIX", ltMixAttachment);
+    setupMixRouting(cfMixBox, cfMixLabel, "CF_MIX", cfMixAttachment);  
+    setupMixRouting(cmMixBox, cmMixLabel, "CM_MIX", cmMixAttachment);
 
     //--------------------------------------------------------------------------
     // ENABLE PROPORTIONAL RESIZE
@@ -471,6 +504,12 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         nfVariationSlider.setBounds(vRow);
 
         // Reset Button layout dynamic anchor on the new bottom
+        int menuW = (moduleWidth - 20) / 2;
+        int resetY = topModulesHeight - 22;
+        nfMixLabel.setBounds(padding + 10, resetY - 22, menuW - 4, 18);
+        nfMixBox.setBounds(padding + 10 + menuW, resetY - 22, menuW, 18);
+        nfOutLabel.setBounds(padding + 10, resetY - 44, menuW - 4, 18);
+        nfOutBox.setBounds(padding + 10 + menuW, resetY - 44, menuW, 18);  
         resetModuleLearnButtons[0].setBounds(padding + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
@@ -497,8 +536,13 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         auto snRow = b.removeFromTop(22);
         cmLearnButtons[8].setBounds(snRow.removeFromRight(30)); snRow.removeFromRight(4);
         arpSingleNoteMenu.setBounds(snRow);
-        arpChannelLabel.setBounds(b.removeFromTop(14));
-        arpChannelMenu.setBounds(b.removeFromTop(22));
+
+        int menuW = (moduleWidth - 20) / 2;
+        int resetY = topModulesHeight - 22;
+        arpMixLabel.setBounds(colX + 10, resetY - 22, menuW - 4, 18);
+        arpMixBox.setBounds(colX + 10 + menuW, resetY - 22, menuW, 18);
+        arpOutLabel.setBounds(colX + 10, resetY - 44, menuW - 4, 18);
+        arpOutBox.setBounds(colX + 10 + menuW, resetY - 44, menuW, 18);
 
         resetModuleLearnButtons[1].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
@@ -525,6 +569,13 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         ltChannelEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 14);
         cmLearnButtons[9].setBounds(colX + moduleWidth - 36, currentY + 20, 30, 20);
 
+        int menuW = (moduleWidth - 20) / 2;
+        int resetY = topModulesHeight - 22;
+        ltMixLabel.setBounds(colX + 10, resetY - 22, menuW - 4, 18);
+        ltMixBox.setBounds(colX + 10 + menuW, resetY - 22, menuW, 18);
+        ltOutLabel.setBounds(colX + 10, resetY - 44, menuW - 4, 18);
+        ltOutBox.setBounds(colX + 10 + menuW, resetY - 44, menuW, 18); 
+
         resetModuleLearnButtons[2].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
 
@@ -546,6 +597,13 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         int currentY = b.getY() + 2;
         cfIsolateEncoder.setBounds(colX + knobXOffset, currentY, targetDiameter, targetDiameter + 14);
         cmLearnButtons[10].setBounds(colX + moduleWidth - 36, currentY + 20, 30, 20);
+
+        int menuW = (moduleWidth - 20) / 2;
+        int resetY = topModulesHeight - 22;
+        cfMixLabel.setBounds(colX + 10, resetY - 22, menuW - 4, 18);
+        cfMixBox.setBounds(colX + 10 + menuW, resetY - 22, menuW, 18);
+        cfOutLabel.setBounds(colX + 10, resetY - 44, menuW - 4, 18);
+        cfOutBox.setBounds(colX + 10 + menuW, resetY - 44, menuW, 18); 
 
         resetModuleLearnButtons[3].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
@@ -581,6 +639,17 @@ void PhraseSyncMasterAudioProcessorEditor::resized()
         cmLengthLabel.setBounds(b.removeFromTop(14));
         auto lRow = b.removeFromTop(20);
         cmLengthMenu.setBounds(lRow);
+
+        // 1. Gui fix 
+        int menuW = (moduleWidth - 20) / 2;
+        int resetY = topModulesHeight - 22;
+
+		// 2. Gui fix for the Mix and Output
+        cmMixLabel.setBounds(colX + 10, resetY - 22, menuW - 4, 18);
+        cmMixBox.setBounds(colX + 10 + menuW, resetY - 22, menuW, 18);
+
+        cmOutLabel.setBounds(colX + 10, resetY - 44, menuW - 4, 18);
+        cmOutBox.setBounds(colX + 10 + menuW, resetY - 44, menuW, 18); 
 
         resetModuleLearnButtons[4].setBounds(colX + 10, topModulesHeight - 22, moduleWidth - 20, 18);
     }
@@ -714,4 +783,3 @@ void PhraseSyncMasterAudioProcessorEditor::handleLearnButtonClick(int buttonInde
         audioProcessor.startMidiLearn(buttonIndex);
     }
 }
-
