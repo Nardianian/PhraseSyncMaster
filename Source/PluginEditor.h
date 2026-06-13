@@ -101,9 +101,7 @@ private:
     juce::Label          arpRateLabel{ "lbl_arp_rt",  "Arp Rate" };
     juce::Label          arpNoChordLabel{ "lbl_arp_nc",  "When No Chord" };
     juce::Label          arpSingleNoteLabel{ "lbl_arp_sn",  "When Single Note" };
-    juce::ComboBox       arpChannelMenu;
-    juce::Label          arpChannelLabel{ "lbl_arp_ch", "Output Channel" };
-
+    
     //--------------------------------------------------------------------------
     // GRAPHIC COMPONENTS: MODULE 3 - LINE TOGGLER
     //--------------------------------------------------------------------------
@@ -158,6 +156,15 @@ private:
     juce::Label cmInLabel;
 
     //--------------------------------------------------------------------------
+    // OUTPUT & MIX ROUTING 
+    //--------------------------------------------------------------------------
+    juce::ComboBox nfOutBox, arpOutBox, ltOutBox, cfOutBox, cmOutBox;
+    juce::ComboBox nfMixBox, arpMixBox, ltMixBox, cfMixBox, cmMixBox;
+
+    juce::Label nfOutLabel, arpOutLabel, ltOutLabel, cfOutLabel, cmOutLabel;
+    juce::Label nfMixLabel, arpMixLabel, ltMixLabel, cfMixLabel, cmMixLabel;    
+
+    //--------------------------------------------------------------------------
     // ATTACHMENTS FOR CONNECTION TO THE APVTS
     //--------------------------------------------------------------------------
     // Module 1
@@ -170,7 +177,6 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpRateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpNoChordAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpSingleNoteAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> arpChannelAttachment;
 
     // Module 3
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   ltBypassAttachment;
@@ -195,6 +201,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ltInputAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cfInputAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> cmInputAttachment;
+
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> nfOutAttachment, arpOutAttachment, ltOutAttachment, cfOutAttachment, cmOutAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> nfMixAttachment, arpMixAttachment, ltMixAttachment, cfMixAttachment, cmMixAttachment;
 
     //--------------------------------------------------------------------------
     // MODULE 5 MIDI LEARN 
