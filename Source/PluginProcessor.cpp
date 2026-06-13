@@ -64,15 +64,33 @@ juce::AudioProcessorValueTreeState::ParameterLayout PhraseSyncMasterAudioProcess
     }
 
     //--------------------------------------------------------------------------
-    // 0. PARAMETERS: ROUTING INPUT
+    // 0. PARAMETERS: ROUTING INPUT, OUTPUT & MIX
     //--------------------------------------------------------------------------
     juce::StringArray inputChannelOptions{ "None", "Any", "Ch 1", "Ch 2", "Ch 3", "Ch 4", "Ch 5", "Ch 6", "Ch 7", "Ch 8", "Ch 9", "Ch 10", "Ch 11", "Ch 12", "Ch 13", "Ch 14", "Ch 15", "Ch 16" };
+    juce::StringArray outputChannelOptions{ "Next Module", "Dir Out Ch 1", "Dir Out Ch 2", "Dir Out Ch 3", "Dir Out Ch 4", "Dir Out Ch 5", "Dir Out Ch 6", "Dir Out Ch 7", "Dir Out Ch 8", "Dir Out Ch 9", "Dir Out Ch 10", "Dir Out Ch 11", "Dir Out Ch 12", "Dir Out Ch 13", "Dir Out Ch 14", "Dir Out Ch 15", "Dir Out Ch 16" };
+    juce::StringArray mixOptions{ "Sum (Merge)", "Replace (Overwrite)" };
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>("NF_INPUT", "NF Input Channel", inputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("NF_OUTPUT", "NF Output Route", outputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("NF_MIX", "NF Mix Mode", mixOptions, 0));
+
     params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_INPUT", "Arp Input Channel", inputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_OUTPUT", "Arp Output Route", outputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_MIX", "Arp Mix Mode", mixOptions, 0));
+
     params.push_back(std::make_unique<juce::AudioParameterChoice>("LT_INPUT", "LT Input Channel", inputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("LT_OUTPUT", "LT Output Route", outputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("LT_MIX", "LT Mix Mode", mixOptions, 0));
+
     params.push_back(std::make_unique<juce::AudioParameterChoice>("CF_INPUT", "CF Input Channel", inputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CF_OUTPUT", "CF Output Route", outputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CF_MIX", "CF Mix Mode", mixOptions, 0));
+
     params.push_back(std::make_unique<juce::AudioParameterChoice>("CM_INPUT", "CM Input Channel", inputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CM_OUTPUT", "CM Output Route", outputChannelOptions, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("CM_MIX", "CM Mix Mode", mixOptions, 0));
+
+    //--------------------------------------------------------------------------
 
     //--------------------------------------------------------------------------
     // 1. PARAMETERS: NOTE FILTER MODULE
@@ -88,7 +106,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout PhraseSyncMasterAudioProcess
     // 2. PARAMETERS: ARPEGGIATOR MODULE (Geometry + Clock)
     //--------------------------------------------------------------------------
     params.push_back(std::make_unique<juce::AudioParameterBool>("ARP_BYPASS", "Arpeggiator Bypass", true));
-    params.push_back(std::make_unique<juce::AudioParameterInt>("ARP_CHANNEL", "Arp MIDI Channel", 1, 16, 1));
     juce::StringArray arpRateOptions{ "1/4", "1/4 Triplet", "1/8", "1/8 Triplet", "1/16", "1/16 Triplet", "1/32" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>("ARP_RATE", "Arp Rate (Clock)", arpRateOptions, 4));
 
@@ -269,6 +286,9 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
 
     const juce::MidiBuffer originalIncomingMidi = midiMessages;
 
+    // Buffer to isolate flows destined for output, bypassing subsequent modules
+    juce::MidiBuffer directOutBuffer;
+
     //--------------------------------------------------------------------------
     // STAGE 0: SYSTEM MIDI LEARN & INCOMING CC AUTOMATION MAPPING
     //--------------------------------------------------------------------------
@@ -366,7 +386,7 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     // Reading the bypass states of the modules
     bool nfBypass = *parameters.getRawParameterValue("NF_BYPASS") > 0.5f;
     bool arpBypass = *parameters.getRawParameterValue("ARP_BYPASS") > 0.5f;
-    int arpChannel = static_cast<int>(*parameters.getRawParameterValue("ARP_CHANNEL"));
+    int arpOutputChoice = static_cast<int>(*parameters.getRawParameterValue("ARP_OUTPUT"));
     bool ltBypass = *parameters.getRawParameterValue("LT_BYPASS") > 0.5f;
     bool cfBypass = *parameters.getRawParameterValue("CF_BYPASS") > 0.5f;
     bool cmBypass = *parameters.getRawParameterValue("CM_BYPASS") > 0.5f;
@@ -450,16 +470,13 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     // STAGE 1: NOTE FILTER MODULE
     //--------------------------------------------------------------------------
     int nfInputChoice = static_cast<int>(*parameters.getRawParameterValue("NF_INPUT"));
+    int nfOutputChoice = static_cast<int>(*parameters.getRawParameterValue("NF_OUTPUT"));
+    int nfMixChoice = static_cast<int>(*parameters.getRawParameterValue("NF_MIX"));
+
     if (!nfBypass || nfInputChoice > 0) {
         juce::MidiBuffer bufferToProcess_NF;
 
-        // Stream 1: Main flow (if not in bypass)
-        if (!nfBypass) {
-            bufferToProcess_NF.addEvents(midiMessages, 0, -1, 0);
-            midiMessages.clear();
-        }
-
-        // Stream 2: Parallel flow extracted from the channel input
+        // INPUT PREPARATION (Sum or Replace)
         if (nfInputChoice > 0) {
             for (const auto metadata : originalIncomingMidi) {
                 auto msg = metadata.getMessage();
@@ -467,8 +484,26 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                     bufferToProcess_NF.addEvent(msg, metadata.samplePosition);
                 }
             }
+            // If MIX MODE = 1 (Replace), remove the target channel old notes from the main buffer
+            if (nfMixChoice == 1 && !nfBypass) {
+                juce::MidiBuffer cleanedMainBuffer;
+                for (const auto metadata : midiMessages) {
+                    auto msg = metadata.getMessage();
+                    bool shouldClear = (nfInputChoice == 1) || (msg.getChannel() == (nfInputChoice - 1));
+                    if (!shouldClear) {
+                        cleanedMainBuffer.addEvent(msg, metadata.samplePosition);
+                    }
+                }
+                midiMessages.swapWith(cleanedMainBuffer);
+            }
+        }
+        else if (!nfBypass) {
+            // Default Serial Input
+            bufferToProcess_NF.addEvents(midiMessages, 0, -1, 0);
+            midiMessages.clear();
         }
 
+        // CORE ELABORATION OF THE MODULE
         int nfVariation = static_cast<int>(*parameters.getRawParameterValue("NF_VARIATION"));
         int nfHeightMode = static_cast<int>(*parameters.getRawParameterValue("NF_HEIGHT"));
 
@@ -491,7 +526,25 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
             }
             processedMidi.addEvent(msg, metadata.samplePosition);
         }
-        midiMessages.addEvents(processedMidi, 0, -1, 0);
+
+        // ROUTING OUTPUT
+        if (nfOutputChoice > 0) {
+            // Direct Out. Assign to the new channel and save in the isolated buffer.
+            int directOutChannel = nfOutputChoice;
+            for (const auto metadata : processedMidi) {
+                auto msg = metadata.getMessage();
+                if (msg.isNoteOn() || msg.isNoteOff() || msg.isController()) {
+                    msg.setChannel(directOutChannel);
+                }
+                directOutBuffer.addEvent(msg, metadata.samplePosition);
+            }
+            // Don't add anything to midiMessages so that modules 2,3,4,5 don't see it.
+        }
+        else {
+            // Sequential Chain. Restart the data in the main stream.
+            midiMessages.addEvents(processedMidi, 0, -1, 0);
+        }
+
         processedMidi.clear();
     }
 
@@ -586,16 +639,24 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                                 activeArpMappings[i] = 0;
                             }
                         }
-                        processedMidi.addEvent(juce::MidiMessage::noteOn(arpChannel, targetNote, 0.8f), sample);
-                        activeArpMappings[targetNote] = arpChannel; // Remember which channel it's on
+                        int targetChannel = (arpOutputChoice > 0) ? arpOutputChoice : 1; // Default to channel 1 if Next Module
+                        processedMidi.addEvent(juce::MidiMessage::noteOn(targetChannel, targetNote, 0.8f), sample);
+                        activeArpMappings[targetNote] = targetChannel; // Remember which channel it's on   
                     }
                 }
             }
             // Deletes the original main stream only if the module is active in the main chain
-            if (!arpBypass) {
-                midiMessages.clear();
+            // OUTPUT MANAGEMENT 1 (Sequential Chain vs. Direct Out)
+            if (arpOutputChoice > 0) {
+                directOutBuffer.addEvents(processedMidi, 0, -1, 0);
             }
-            midiMessages.addEvents(processedMidi, 0, -1, 0);
+            else {
+                // Deletes the original main stream only if the module is active in the main chain
+                if (!arpBypass) {
+                    midiMessages.clear();
+                }
+                midiMessages.addEvents(processedMidi, 0, -1, 0);
+            }
             processedMidi.clear();
         }
         else {
@@ -627,14 +688,13 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     // STAGE 3: LINE TOGGLER MODULE
     //--------------------------------------------------------------------------
     int ltInputChoice = static_cast<int>(*parameters.getRawParameterValue("LT_INPUT"));
+    int ltOutputChoice = static_cast<int>(*parameters.getRawParameterValue("LT_OUTPUT"));
+    int ltMixChoice = static_cast<int>(*parameters.getRawParameterValue("LT_MIX"));
+
     if (!ltBypass || ltInputChoice > 0) {
         juce::MidiBuffer bufferToProcess_LT;
 
-        if (!ltBypass) {
-            bufferToProcess_LT.addEvents(midiMessages, 0, -1, 0);
-            midiMessages.clear();
-        }
-
+        // INPUT & MIX MODE MANAGEMENT 1 (Sum vs Replace)
         if (ltInputChoice > 0) {
             for (const auto metadata : originalIncomingMidi) {
                 auto msg = metadata.getMessage();
@@ -642,8 +702,24 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                     bufferToProcess_LT.addEvent(msg, metadata.samplePosition);
                 }
             }
+            if (ltMixChoice == 1 && !ltBypass) {
+                juce::MidiBuffer cleanedMainBuffer;
+                for (const auto metadata : midiMessages) {
+                    auto msg = metadata.getMessage();
+                    bool shouldClear = (ltInputChoice == 1) || (msg.getChannel() == (ltInputChoice - 1));
+                    if (!shouldClear) {
+                        cleanedMainBuffer.addEvent(msg, metadata.samplePosition);
+                    }
+                }
+                midiMessages.swapWith(cleanedMainBuffer);
+            }
+        }
+        else if (!ltBypass) {
+            bufferToProcess_LT.addEvents(midiMessages, 0, -1, 0);
+            midiMessages.clear();
         }
 
+        // CORE ELABORATION OF THE MODULE
         int ltChannel = static_cast<int>(*parameters.getRawParameterValue("LT_CHANNEL"));
 
         for (const auto metadata : bufferToProcess_LT) {
@@ -653,7 +729,21 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
             }
             processedMidi.addEvent(msg, metadata.samplePosition);
         }
-        midiMessages.addEvents(processedMidi, 0, -1, 0);
+
+        // OUTPUT MANAGEMENT 2 (Sequential Chain vs. Direct Out)
+        if (ltOutputChoice > 0) {
+            int directOutChannel = ltOutputChoice;
+            for (const auto metadata : processedMidi) {
+                auto msg = metadata.getMessage();
+                if (msg.isNoteOn() || msg.isNoteOff() || msg.isController()) {
+                    msg.setChannel(directOutChannel);
+                }
+                directOutBuffer.addEvent(msg, metadata.samplePosition);
+            }
+        }
+        else {
+            midiMessages.addEvents(processedMidi, 0, -1, 0);
+        }
         processedMidi.clear();
     }
 
@@ -661,14 +751,13 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
     // STAGE 4: CHANNEL FILTER MODULE
     //--------------------------------------------------------------------------
     int cfInputChoice = static_cast<int>(*parameters.getRawParameterValue("CF_INPUT"));
+    int cfOutputChoice = static_cast<int>(*parameters.getRawParameterValue("CF_OUTPUT"));
+    int cfMixChoice = static_cast<int>(*parameters.getRawParameterValue("CF_MIX"));
+
     if (!cfBypass || cfInputChoice > 0) {
         juce::MidiBuffer bufferToProcess_CF;
 
-        if (!cfBypass) {
-            bufferToProcess_CF.addEvents(midiMessages, 0, -1, 0);
-            midiMessages.clear();
-        }
-
+        // INPUT & MIX MODE MANAGEMENT 2 (Sum vs Replace)
         if (cfInputChoice > 0) {
             for (const auto metadata : originalIncomingMidi) {
                 auto msg = metadata.getMessage();
@@ -676,8 +765,24 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                     bufferToProcess_CF.addEvent(msg, metadata.samplePosition);
                 }
             }
+            if (cfMixChoice == 1 && !cfBypass) {
+                juce::MidiBuffer cleanedMainBuffer;
+                for (const auto metadata : midiMessages) {
+                    auto msg = metadata.getMessage();
+                    bool shouldClear = (cfInputChoice == 1) || (msg.getChannel() == (cfInputChoice - 1));
+                    if (!shouldClear) {
+                        cleanedMainBuffer.addEvent(msg, metadata.samplePosition);
+                    }
+                }
+                midiMessages.swapWith(cleanedMainBuffer);
+            }
+        }
+        else if (!cfBypass) {
+            bufferToProcess_CF.addEvents(midiMessages, 0, -1, 0);
+            midiMessages.clear();
         }
 
+        // CORE ELABORATION OF THE MODULE
         int cfChannel = static_cast<int>(*parameters.getRawParameterValue("CF_CHANNEL"));
 
         for (const auto metadata : bufferToProcess_CF) {
@@ -686,17 +791,50 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                 processedMidi.addEvent(msg, metadata.samplePosition);
             }
         }
-        midiMessages.addEvents(processedMidi, 0, -1, 0);
+
+        // OUTPUT MANAGEMENT 3 (Sequential Chain vs. Direct Out)
+        if (cfOutputChoice > 0) {
+            int directOutChannel = cfOutputChoice;
+            for (const auto metadata : processedMidi) {
+                auto msg = metadata.getMessage();
+                if (msg.isNoteOn() || msg.isNoteOff() || msg.isController()) {
+                    msg.setChannel(directOutChannel);
+                }
+                directOutBuffer.addEvent(msg, metadata.samplePosition);
+            }
+        }
+        else {
+            midiMessages.addEvents(processedMidi, 0, -1, 0);
+        }
         processedMidi.clear();
-    }
+    }  
 
     //--------------------------------------------------------------------------
     // STAGE 5: CONTROLLER MOTION MODULE
     //--------------------------------------------------------------------------
     int cmInputChoice = static_cast<int>(*parameters.getRawParameterValue("CM_INPUT"));
+    int cmOutputChoice = static_cast<int>(*parameters.getRawParameterValue("CM_OUTPUT"));
+    int cmMixChoice = static_cast<int>(*parameters.getRawParameterValue("CM_MIX"));
+
     if (!cmBypass || cmInputChoice > 0) {
+        // Se MIX MODE = Replace (1), pulisce il canale bersaglio nel buffer principale prima della generazione
+        if (cmInputChoice > 0 && cmMixChoice == 1 && !cmBypass) {
+            juce::MidiBuffer cleanedMainBuffer;
+            for (const auto metadata : midiMessages) {
+                auto msg = metadata.getMessage();
+                bool shouldClear = (cmInputChoice == 1) || (msg.getChannel() == (cmInputChoice - 1));
+                if (!shouldClear) {
+                    cleanedMainBuffer.addEvent(msg, metadata.samplePosition);
+                }
+            }
+            midiMessages.swapWith(cleanedMainBuffer);
+        }
+
         int cmPhraseMode = static_cast<int>(*parameters.getRawParameterValue("CM_PHRASE"));
         int cmChannel = static_cast<int>(*parameters.getRawParameterValue("CM_CHANNEL"));
+
+        // Determines the actual MIDI channel to apply to the generated CCs
+        int targetMidiChannel = (cmOutputChoice > 0) ? cmOutputChoice : cmChannel;
 
         double cmPhraseBeats = 1.0;
         if (cmPhraseMode == 0) cmPhraseBeats = 1.0;
@@ -750,12 +888,23 @@ void PhraseSyncMasterAudioProcessor::processBlock(juce::AudioBuffer<float>& buff
                 int actualCC = cmTargetCCs[i].load();
 
                 if (ccValue != lastSentValues[i]) {
-                    midiMessages.addEvent(juce::MidiMessage::controllerEvent(cmChannel, actualCC, ccValue), sample);
+                    auto ccMsg = juce::MidiMessage::controllerEvent(targetMidiChannel, actualCC, ccValue);
+
+                    // Route the event to the global final buffer or intermediate sequential stream
+                    if (cmOutputChoice > 0) {
+                        directOutBuffer.addEvent(ccMsg, sample);
+                    }
+                    else {
+                        midiMessages.addEvent(ccMsg, sample);
+                    }
                     lastSentValues[i] = ccValue;
                 }
             }
         }
-    }
+    }  
+
+    // Rejoins any signals routed directly to the Output bypassing the internal matrix
+    midiMessages.addEvents(directOutBuffer, 0, -1, 0);
 
     // Incremental advancement of the global counter
     totalSamplesProcessed += numSamples;
@@ -773,4 +922,3 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new PhraseSyncMasterAudioProcessor();
 }
-
